@@ -57,7 +57,7 @@ button,select,input,textarea{font:inherit;color:inherit}
 .wa-k{fill:none;stroke-width:11;stroke-linecap:round}
 .wa-k2{fill:none;stroke:#fff;stroke-width:4;stroke-linecap:round}
 .lab-m{fill:#8a2c06;font-weight:600}
-.w,.oddz,.les,.droga,.ciek,.sel,.gps-k,.gr,.mi-l,.mi-p,.mi-v,.mi-v2,.mo-l,.mo-p,.mo-k,.mo-k2,.wa-p,.wa-l,.wa-k,.wa-k2{vector-effect:non-scaling-stroke}
+.sz,.w,.oddz,.les,.droga,.ciek,.sel,.gps-k,.gr,.mi-l,.mi-p,.mi-v,.mi-v2,.mo-l,.mo-p,.mo-k,.mo-k2,.wa-p,.wa-l,.wa-k,.wa-k2{vector-effect:non-scaling-stroke}
 .mier{background:var(--card);border:1px solid var(--line);border-left:5px solid #e8590c;border-radius:12px;padding:8px 10px;box-shadow:0 1px 6px rgba(0,0,0,.25)}
 .mier:empty{display:none}
 .mier .wy{font-size:15px;margin:0 0 7px}
@@ -82,13 +82,13 @@ button,select,input,textarea{font:inherit;color:inherit}
 /* sterowanie */
 .gora{position:fixed;left:8px;right:8px;top:calc(8px + env(safe-area-inset-top,0px));display:flex;gap:6px;align-items:center;z-index:5;pointer-events:none}
 .gora>*{pointer-events:auto}
-.pill{border:1px solid var(--line);background:var(--card);border-radius:12px;padding:8px 12px;box-shadow:0 1px 6px rgba(0,0,0,.18);cursor:pointer;font-weight:600;white-space:nowrap}
-.rok{display:flex;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 1px 6px rgba(0,0,0,.18)}
-.rok button{border:0;background:none;padding:8px 11px;font-size:18px;line-height:1;cursor:pointer}
-.rok select{border:0;background:none;font-weight:700;font-size:16px;padding:6px 0;appearance:none;-webkit-appearance:none;text-align:center}
+.pill{border:1px solid var(--line);background:var(--card);border-radius:10px;padding:6px 9px;box-shadow:0 1px 5px rgba(0,0,0,.18);cursor:pointer;font-weight:600;font-size:14px;white-space:nowrap}
+.rok{display:flex;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:10px;box-shadow:0 1px 5px rgba(0,0,0,.18)}
+.rok button{border:0;background:none;padding:6px 8px;font-size:16px;line-height:1;cursor:pointer}
+.rok select{border:0;background:none;font-weight:700;font-size:14px;padding:5px 0;appearance:none;-webkit-appearance:none;text-align:center}
 .sp{flex:1}
-.prawo{position:fixed;right:8px;top:calc(64px + env(safe-area-inset-top,0px));display:flex;flex-direction:column;gap:8px;z-index:5}
-.prawo button{width:46px;height:46px;border-radius:12px;border:1px solid var(--line);background:var(--card);box-shadow:0 1px 6px rgba(0,0,0,.18);font-size:20px;line-height:1;cursor:pointer;padding:0}
+.prawo{position:fixed;right:8px;top:calc(52px + env(safe-area-inset-top,0px));display:flex;flex-direction:column;gap:6px;z-index:5}
+.prawo button{width:38px;height:38px;border-radius:10px;border:1px solid var(--line);background:var(--card);box-shadow:0 1px 5px rgba(0,0,0,.18);font-size:17px;line-height:1;cursor:pointer;padding:0}
 #bGps.on{background:#1a73e8;color:#fff;border-color:#1a73e8}
 #bGps.pol{background:#dbe8fd;color:#1a4fa8;border-color:#1a73e8}
 .dol{position:fixed;left:8px;right:8px;bottom:calc(8px + env(safe-area-inset-bottom,0px));z-index:5;display:flex;flex-direction:column;gap:6px;pointer-events:none}
@@ -97,7 +97,7 @@ button,select,input,textarea{font:inherit;color:inherit}
 .leg:empty{display:none}
 .leg .k{display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
 .kw{display:inline-block;width:13px;height:13px;border-radius:3px;border:1px solid rgba(0,0,0,.3);flex:none}
-.gdzie{background:#1a73e8;color:#fff;border-radius:12px;padding:9px 13px;font-weight:600;box-shadow:0 1px 6px rgba(0,0,0,.25);cursor:pointer}
+.gdzie{background:#1a73e8;color:#fff;border-radius:10px;padding:7px 11px;font-size:14px;font-weight:600;box-shadow:0 1px 6px rgba(0,0,0,.25);cursor:pointer}
 .gdzie:empty{display:none}
 .gdzie.uw{background:#8a4200}
 /* arkusz od dołu (telefon) albo panel z prawej (komputer) */
@@ -620,11 +620,11 @@ function szacHtml(s){
 // ---- mapa terenowa (2026-11-03): reszta pisana od nowa pod telefon --------------------------
 let M = null, G = null;
 const V = {cx:0, cy:0, m:5};          // środek widoku (PL-1992) i metry na piksel ekranu
-const ST = {rok:0, cz:new Map(), status:'all', kontrRok:0, gr:true, grNr:true, moje:true, zew:false};
+const ST = {rok:0, cz:new Map(), status:'all', kontrRok:0, gr:true, grNr:true, moje:true, zew:false, szk:new Set()};
 const GPS = {id:null, sledz:false, p:null, k:null};
 let KARTA = null, ARK = '';
 const LS = 'mapaTeren.v1';
-function zapiszUst(){ try { localStorage.setItem(LS, JSON.stringify({rok:ST.rok, cz:[...ST.cz.keys()], status:ST.status, gr:ST.gr, grNr:ST.grNr, moje:ST.moje, zew:ST.zew})); } catch (e) {} }
+function zapiszUst(){ try { localStorage.setItem(LS, JSON.stringify({rok:ST.rok, cz:[...ST.cz.keys()], status:ST.status, gr:ST.gr, grNr:ST.grNr, moje:ST.moje, zew:ST.zew, szk:[...ST.szk]})); } catch (e) {} }
 function wczytajUst(){ try { return JSON.parse(localStorage.getItem(LS) || 'null'); } catch (e) { return null; } }
 function kolorCz(cz){ return PALETA[ST.cz.get(cz) % PALETA.length]; }
 
@@ -672,7 +672,7 @@ async function wczytaj(file, zapamietaj){
       const g = czytajShp(sh), a = czytajDbf(db);
       return przygotuj(g.map((x, i) => ({g:x, a:a[i] || {}})).filter(f => f.g && !f.a._usun));
     };
-    const [wydz, oddz, les, drogi, cieki, grp] = await Promise.all(['wydz_pol', 'oddz_pol', 'les_pol', 'kom_lin', 'ciek_lin', 'gr_pkt'].map(L));
+    const [wydz, oddz, les, drogi, cieki, grp, szPol, szLin, szPkt, szPnsw] = await Promise.all(['wydz_pol', 'oddz_pol', 'les_pol', 'kom_lin', 'ciek_lin', 'gr_pkt', 'szkic_pol', 'szkic_lin', 'szkic_pkt', 'szkic_pnsw'].map(L));
     if (!wydz.length) throw new Error('W paczce nie ma warstwy wydzieleń (wydz_pol). Potrzebny pełny ZIP z mLasa.');
     G = {wydz:[], oddz:[], les, drogi, cieki, W:new Map(), O:new Map()};
     for (const f of wydz){
@@ -686,6 +686,9 @@ async function wczytaj(file, zapamietaj){
     G.gr = grp.filter(f => f.g.t === 'pkt' && f.x > G.bb[0] - 300 && f.x < G.bb[2] + 300 && f.y > G.bb[1] - 300 && f.y < G.bb[3] + 300)
       .map(f => ({x:f.x, y:f.y, nr:S(f.a.nr_gran), stab:S(f.a.stab) === 'T', klasa:f.a.klasa, osnowa:S(f.a.osnowa), wys:D(f.a.wys)}));
     for (const sid in M.szk) M.szk[sid].geo = [];
+    // szkic_pnsw: biogrupy, kępy, gniazda, luki; kod_ob dorabiamy jak na mapie przenośnej
+    for (const f of szPnsw) f.a.kod_ob = 'PNSW';
+    for (const f of [...szPol, ...szPnsw, ...szLin, ...szPkt]){ const s = M.szk[f.a.id_szkic]; if (s) s.geo.push(f); }
     let data = new Date(file.lastModified);
     const mm = /_(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})\d{2}/.exec(file.name);
     if (mm) data = new Date(2000 + +mm[1], +mm[2] - 1, +mm[3], +mm[4], +mm[5]);
@@ -699,6 +702,7 @@ async function wczytaj(file, zapamietaj){
     if (u && typeof u.grNr === 'boolean') ST.grNr = u.grNr;
     if (u && typeof u.moje === 'boolean') ST.moje = u.moje;
     if (u && typeof u.zew === 'boolean') ST.zew = u.zew;
+    ST.szk = new Set((u && Array.isArray(u.szk) ? u.szk : []).filter(id => M.szk[id]));
     ST.cz.clear();
     if (u && Array.isArray(u.cz)) u.cz.forEach((c, i) => ST.cz.set(c, i));
     budujUklad();
@@ -723,13 +727,14 @@ function budujUklad(){
   document.getElementById('app').innerHTML = `
   <div id='mapa'><svg id='svg' xmlns='http://www.w3.org/2000/svg' preserveAspectRatio='xMidYMid meet'>
     <defs><clipPath id='granica'>${G.les.map(f => `<path d='${f.d}'/>`).join('')}</clipPath></defs>
-    <g id='l-wydz'></g><g id='l-cieki' clip-path='url(#granica)'></g><g id='l-drogi' clip-path='url(#granica)'></g>
-    <g id='l-oddz'></g><g id='l-les'></g><g id='l-war'></g><g id='l-sel'></g><g id='l-gr'></g><g id='l-moje'></g><g id='l-wyb'></g><g id='l-mier'></g>
+    <g id='l-wydz'></g><g id='l-szkP'></g><g id='l-cieki' clip-path='url(#granica)'></g><g id='l-drogi' clip-path='url(#granica)'></g>
+    <g id='l-oddz'></g><g id='l-les'></g><g id='l-szkL'></g><g id='l-war'></g><g id='l-sel'></g><g id='l-szkD'></g><g id='l-gr'></g><g id='l-moje'></g><g id='l-wyb'></g><g id='l-mier'></g>
     <g id='l-labW' class='lab'></g><g id='l-grLab' class='lab lab-g'></g><g id='l-mojeLab' class='lab lab-m'></g><g id='l-labO' class='lab lab-o'></g><g id='l-gps'></g>
   </svg></div>
   <div class='gora'>
     <div class='rok'><button onclick='rokKrok(-1)' aria-label='Poprzedni rok'>‹</button><select id='rok' onchange='ustawRok(+this.value)'>${M.lata.map(r => `<option value='${r}'${r === ST.rok ? ' selected' : ''}>${r}</option>`).join('')}</select><button onclick='rokKrok(1)' aria-label='Następny rok'>›</button></div>
     <button class='pill' onclick='panelZabiegi()'>Zabiegi <span id='ileCz' class='op'></span></button>
+    <button class='pill' onclick='panelSzkice()'>Szkice <span id='ileSzk' class='op'></span></button>
     <span class='sp'></span>
     <button class='pill' onclick='panelSzukaj()' aria-label='Szukaj wydzielenia'>🔍</button>
     <button class='pill' onclick='panelInfo()' aria-label='Paczka'>☰</button>
@@ -740,7 +745,7 @@ function budujUklad(){
   <div class='dol'><div id='mier' class='mier'></div><div id='gdzie' class='gdzie' onclick='if(GPS.k)otworzKarte(GPS.k)'></div><div id='leg' class='leg'></div></div>
   <div id='ark' class='ark'><div class='uchwyt' onclick='zamknijArk()'></div><button class='x' onclick='zamknijArk()' aria-label='Zamknij'>×</button><div id='arkT'></div></div>`;
   rysujPodklad();
-  rysujWarstwy(); rysujMoje(); rysujMier();
+  rysujWarstwy(); rysujMoje(); rysujMier(); rysujSzk();
   koloruj();
   podepnijMape();
   dopasuj(G.bb);
@@ -798,6 +803,7 @@ function legenda(wyb){
     ? cz.map(c => `<span class='k'><span class='kw' style='background:${kolorCz(c)}'></span><b>${esc(c)}</b> ${ile[c]}</span>`).join('') +
       `<span class='op'>· pełny = wykonane, blady = do wykonania${pozaMapa ? ` · ${pozaMapa} poz. na całe oddziały/leśnictwo` : ''}</span>`
     : `<span class='op'>${ST.cz.size ? 'W ' + ST.rok + ' brak wybranych zabiegów.' : 'Dotknij „Zabiegi”, żeby pokolorować mapę.'}</span>`;
+  el.innerHTML += legSzk();
 }
 function ustawRok(r){ ST.rok = r; const s = document.getElementById('rok'); if (s) s.value = r; koloruj(); zapiszUst(); if (ARK === 'zab') panelZabiegi(); if (ARK === 'karta') rysujKarte(); }
 function rokKrok(d){ const i = M.lata.indexOf(ST.rok) + d; if (i >= 0 && i < M.lata.length) ustawRok(M.lata[i]); }
@@ -927,6 +933,7 @@ function podpisy(){
   ml.style.display = ST.moje && V.m < 1.5 ? '' : 'none';
   ml.setAttribute('font-size', (12 * V.m).toFixed(3)); ml.setAttribute('stroke-width', (3 * V.m).toFixed(3));
   ml.setAttribute('transform', `translate(0 ${(-15 * V.m).toFixed(3)})`);
+  rysujSzkDyn();
 }
 const ogr = m => Math.min(60, Math.max(.08, m));
 function swiat(px, py){ const r = rozmiar(); return [V.cx + (px - r.l - r.w / 2) * V.m, V.cy - (py - r.t - r.h / 2) * V.m]; }
@@ -1008,6 +1015,7 @@ function dotkniecie(px, py){
   if (kam){ otworzPunkt(kam); return; }
   const o = trafMoje(x, y); if (o){ otworzMoje(o.id); return; }
   const t = trafWarstwy(x, y); if (t){ otworzObiektW(t.w, t.f, x, y); return; }
+  const sz = trafSzk(x, y); if (sz){ otworzSzk(sz.s, sz.f, x, y); return; }
   const f = wydzW(x, y);
   if (f) otworzKarte(f.k); else zamknijArk();
 }
@@ -1286,6 +1294,137 @@ function eksportMoje(fmt){
       `moje-punkty-${dzis()}.kml`, 'application/vnd.google-earth.kml+xml');
   }
 }
+
+// ---- szkice z mLasa (szkic_pol/lin/pkt/pnsw + g_forest_sketch w SILP.db); kolory i kody jak na mapie przenośnej -------------
+const LINIE_SZK = {'K OBAL':{n:'kierunek obalania', c:'#1565c0', w:2}, 'K ZRYW':{n:'szlak zrywkowy (kierunek zrywki)', c:'#5d2e0c', w:2, da:'9 3'}, 'K WYW':{n:'kierunek wywozu', c:'#111', w:2.8}};
+const PNSW_KOL = '#2e7d32', PNSW_TLO = '#66bb6a', PNSW_NAPIS = '#1b5e20';
+const PKT_SZK = {'DRZ ROZK':{n:'drzewo do rozkładu', c:'#7a5230'}, 'APTECZKA':{n:'apteczka', c:'#e00000'}, 'SKLAD DR S':{n:'skład drewna', c:'#f2c200'}, 'OSOB PKT':{n:'punkt osobliwy', c:'#1f6fd1'}};
+const PNSW_SKROT = {'KĘPA':'K', 'KĘPA E':'KE', 'BIOGRUPA':'B', 'GNIA':'G', 'OD GNIA':'OG', 'LUKA':'L', 'REMIZA':'R'};
+const PNSW_NAZWA = {'KĘPA':'kępa', 'KĘPA E':'kępa ekologiczna', 'BIOGRUPA':'biogrupa', 'GNIA':'gniazdo', 'OD GNIA':'gniazdo odnowieniowe', 'LUKA':'luka', 'REMIZA':'remiza'};
+const RODZ_SZK = {Z:'zrębowy', O:'odnowieniowy'};
+function pnswEtykieta(f){ const k = S(f.a.kod_pnsw).toUpperCase(); return `${f.a.pnsw_nr ?? ''}-${PNSW_SKROT[k] || k}/${fn(f.a.pow || 0, 2)}`; }
+function pnswOpis(f){ const k = S(f.a.kod_pnsw).toUpperCase(); return pnswEtykieta(f) + ' · ' + (PNSW_NAZWA[k] || k) + (f.a.status ? ' · status ' + S(f.a.status) : ''); }
+function kolGat(o){
+  const g = S(o).toUpperCase().replace(/[^A-ZĄĆĘŁŃÓŚŹŻ]/g, '');
+  for (const k of [g, g.slice(0, 3), g.slice(0, 2)]) if (GATUNKI[k]) return GATUNKI[k];
+  return '#c8c8c0';
+}
+const szkWyb = () => [...ST.szk].map(id => M.szk[id]).filter(Boolean);
+const kodSzk = f => S(f.a.kod_ob).toUpperCase();
+function opisObSzk(f){
+  const k = kodSzk(f), o = S(f.a.opis_ob);
+  if (k === 'PNSW') return pnswOpis(f);
+  if (LINIE_SZK[k]) return LINIE_SZK[k].n;
+  if (PKT_SZK[k]) return PKT_SZK[k].n + (o ? ' · ' + o : '');
+  if (k === 'BIOC GAT') return 'drzewo biocenotyczne' + (o ? ' · ' + o : '');
+  if (k.startsWith('OGRODZ')) return 'ogrodzenie';
+  if (k.startsWith('OBSZAR')) return 'granica szkicu';
+  if (k.startsWith('GAT')) return (o || 'gatunek') + ` (${k})`;
+  return k + (o ? ' · ' + o : '');
+}
+// poligony i linie stoją w miejscu; punkty, groty i podpisy zależą od skali (rysujSzkDyn, wołane z podpisy())
+function rysujSzk(){
+  const P = document.getElementById('l-szkP'), L = document.getElementById('l-szkL'); if (!P) return;
+  const sp = [], sl = [];
+  for (const s of szkWyb()) for (const f of s.geo){
+    const k = kodSzk(f);
+    if (k === 'PNSW'){ sl.push(`<path class='sz' d='${f.d}' fill='${PNSW_TLO}' fill-opacity='.3' stroke='${PNSW_KOL}' stroke-width='1.6'/>`); continue; }
+    if (f.g.t === 'pol'){
+      if (k.startsWith('GAT')) sp.push(`<path class='sz' d='${f.d}' fill='${kolGat(f.a.opis_ob)}' fill-opacity='.6' stroke='#4a4a46' stroke-width='.7'/>`);
+      else if (k.startsWith('OBSZAR')) sl.push(`<path class='sz' d='${f.d}' fill='none' stroke='#c1121f' stroke-width='2.4'/>`);
+      else sp.push(`<path class='sz' d='${f.d}' fill='#9a9a95' fill-opacity='.3' stroke='#55554f' stroke-width='.8'/>`);
+    } else if (f.g.t === 'lin'){
+      const ln = LINIE_SZK[k];
+      sl.push(`<path class='sz' d='${f.d}' fill='none' ` + (k.startsWith('OGRODZ') ? `stroke='#6a0dad' stroke-width='2' stroke-dasharray='7 3'`
+        : ln ? `stroke='${ln.c}' stroke-width='${ln.w}'${ln.da ? ` stroke-dasharray='${ln.da}'` : ''}` : `stroke='#333' stroke-width='1.4' stroke-dasharray='3 2'`) + `/>`);
+    }
+  }
+  P.innerHTML = sp.join(''); L.innerHTML = sl.join('');
+  const ile = document.getElementById('ileSzk'); if (ile) ile.textContent = ST.szk.size ? '(' + ST.szk.size + ')' : '';
+  rysujSzkDyn(); legenda(wybrane());
+}
+function rysujSzkDyn(){
+  const el = document.getElementById('l-szkD'); if (!el) return;
+  const ws = szkWyb(); if (!ws.length){ el.innerHTML = ''; return; }
+  const m = V.m, h = [], kol = {}, napG = [], napP = [], grot = [];
+  for (const s of ws) for (const f of s.geo){
+    const k = kodSzk(f);
+    if (f.g.t === 'pkt'){ if (m < 2.5){ const c = PKT_SZK[k] ? PKT_SZK[k].c : kolGat(f.a.opis_ob); (kol[c] || (kol[c] = [])).push([f.x, f.y]); if (m < .8 && S(f.a.opis_ob) && !PKT_SZK[k]) napG.push([f.x + 9 * m, f.y, S(f.a.opis_ob)]); } }
+    else if (k === 'PNSW'){ if (m < 1.6){ const p = f.lp || {x:(f.bb[0] + f.bb[2]) / 2, y:(f.bb[1] + f.bb[3]) / 2}; napP.push([p.x, p.y, pnswEtykieta(f)]); } }
+    else if (f.g.t === 'pol' && k.startsWith('GAT')){ if (f.lp && m < 1.6 && Math.min(f.lp.w, f.lp.h) / m > 26) napG.push([f.lp.x, f.lp.y, S(f.a.opis_ob)]); }
+    else if (f.g.t === 'lin' && LINIE_SZK[k] && m < 4){
+      // grot na końcu każdej części linii = kierunek (obalania, zrywki, wywozu); wielkość stała na ekranie
+      const ln = LINIE_SZK[k], L = 13 * m, W = 6 * m;
+      for (const r of f.g.rings){
+        const n = r.length / 2; if (n < 2) continue;
+        const x1 = r[2 * n - 2], y1 = r[2 * n - 1]; let x0 = r[2 * n - 4], y0 = r[2 * n - 3];
+        for (let i = n - 2; i >= 0 && Math.hypot(x1 - r[2 * i], y1 - r[2 * i + 1]) < L; i--){ x0 = r[2 * i]; y0 = r[2 * i + 1]; }
+        const d = Math.hypot(x1 - x0, y1 - y0); if (!d) continue;
+        const ux = (x1 - x0) / d, uy = (y1 - y0) / d, bx = x1 - ux * L, by = y1 - uy * L;
+        grot.push(`<polygon points='${[[x1, y1], [bx - uy * W, by + ux * W], [bx + uy * W, by - ux * W]].map(([x, y]) => x.toFixed(1) + ',' + (-y).toFixed(1)).join(' ')}' fill='${ln.c}'/>`);
+      }
+    }
+  }
+  h.push(grot.join(''));
+  for (const [c, p] of Object.entries(kol)) h.push(`<path class='sz' d='${kropki(p)}' fill='none' stroke='#222' stroke-width='10' stroke-linecap='round'/><path class='sz' d='${kropki(p)}' fill='none' stroke='${c}' stroke-width='7.5' stroke-linecap='round'/>`);
+  const t = (l, fs, attr) => l.length ? `<g class='lab' font-size='${(fs * m).toFixed(3)}' stroke-width='${(3 * m).toFixed(3)}' ${attr}>${l.map(([x, y, s]) => `<text x='${x.toFixed(1)}' y='${(-y).toFixed(1)}'>${esc(s)}</text>`).join('')}</g>` : '';
+  h.push(t(napG, 11, `font-style='italic' style='text-anchor:start'`), t(napP, 12, `fill='${PNSW_NAPIS}' font-weight='700'`));
+  el.innerHTML = h.join('');
+}
+// legenda szkiców dokładana pod zabiegami, tylko dla kodów, które są na mapie
+function legSzk(){
+  const ws = szkWyb(); if (!ws.length) return '';
+  const kody = new Set(); for (const s of ws) for (const f of s.geo) kody.add(kodSzk(f) === 'PNSW' ? 'PNSW' : kodSzk(f));
+  const sv = b => `<svg width='22' height='12' viewBox='0 0 22 12' style='flex:none'>${b}</svg>`, it = [];
+  it.push(`<span class='k'>${sv(`<rect x='1' y='1' width='20' height='10' fill='none' stroke='#c1121f' stroke-width='2'/>`)}szkic</span>`);
+  for (const [k, ln] of Object.entries(LINIE_SZK)) if (kody.has(k)) it.push(`<span class='k'>${sv(`<path d='M1 6H15' stroke='${ln.c}' stroke-width='2'${ln.da ? ` stroke-dasharray='4 2'` : ''}/><path d='M21 6L14 2V10Z' fill='${ln.c}'/>`)}${ln.n.replace(/ \(.*\)/, '')}</span>`);
+  if ([...kody].some(k => k.startsWith('OGRODZ'))) it.push(`<span class='k'>${sv(`<path d='M1 6H21' stroke='#6a0dad' stroke-width='2' stroke-dasharray='4 2'/>`)}ogrodzenie</span>`);
+  if (kody.has('PNSW')) it.push(`<span class='k'>${sv(`<rect x='1' y='1' width='20' height='10' fill='${PNSW_TLO}' fill-opacity='.35' stroke='${PNSW_KOL}' stroke-width='1.5'/>`)}kępy, biogrupy, gniazda</span>`);
+  for (const [k, p] of Object.entries(PKT_SZK)) if (kody.has(k)) it.push(`<span class='k'>${sv(`<circle cx='11' cy='6' r='4' fill='${p.c}' stroke='#222'/>`)}${p.n}</span>`);
+  if (kody.has('BIOC GAT')) it.push(`<span class='k'>${sv(`<circle cx='11' cy='6' r='4' fill='#e9c46a' stroke='#222'/>`)}drzewa biocenotyczne (kolor gatunku)</span>`);
+  return `<span style='flex-basis:100%;height:0'></span><b>Szkice:</b>` + it.join('');
+}
+function trafSzk(x, y){
+  const ws = szkWyb(); if (!ws.length) return null;
+  const tp = 14 * V.m, tl = 10 * V.m, wBB = (f, t) => x >= f.bb[0] - t && x <= f.bb[2] + t && y >= f.bb[1] - t && y <= f.bb[3] + t;
+  if (V.m < 2.5) for (const s of ws) for (const f of s.geo) if (f.g.t === 'pkt' && Math.hypot(f.x - x, f.y - y) < tp) return {s, f};
+  // granica szkicu łapie tylko przy linii, żeby dotknięcie w środku dalej otwierało kartę wydzielenia
+  const obsz = f => f.g.t === 'pol' && kodSzk(f).startsWith('OBSZAR');
+  for (const s of ws) for (const f of s.geo) if ((f.g.t === 'lin' || obsz(f)) && wBB(f, tl) && przyLinii(f.g.rings, x, y, tl, obsz(f))) return {s, f};
+  // poligony od najmniejszych: kępa w gnieździe, gniazdo w szkicu
+  const pol = [];
+  for (const s of ws) for (const f of s.geo) if (f.g.t === 'pol' && !obsz(f) && wBB(f, 0) && pip(f.g.rings, x, y)) pol.push({s, f, a:(f.bb[2] - f.bb[0]) * (f.bb[3] - f.bb[1])});
+  pol.sort((a, b) => a.a - b.a);
+  return pol[0] || null;
+}
+function otworzSzk(s, f, x, y){
+  KARTA = null; PUNKT = null; WYBM = null; OBW = null; rysujSel();
+  const wyb = document.getElementById('grWyb'); if (wyb) wyb.setAttribute('d', '');
+  podswietl(f.g.t === 'pkt' ? {t:'pkt', p:[f.x, f.y]} : {d:f.d});
+  const kv = f.g.t === 'pkt' ? `<span>Od Ciebie</span><span>${odCiebie(f.x, f.y)}</span><span>WGS84</span><span>${fWgs(f.x, f.y)}</span>`
+    : f.g.t === 'pol' ? `<span>Pole</span><span><b>${fHa(poleRs(f.g.rings))}</b></span>` : `<span>Długość</span><span><b>${fM(dlugRs(f.g.rings, false))}</b></span>`;
+  const op = [s.det, s.sklad, s.opis].filter(Boolean);
+  otworzArk('szk', `<h2>${esc(opisObSzk(f))}</h2>
+    <p>Szkic ${RODZ_SZK[s.rodz] || ''} <b>${esc(krotki(s.adr))}</b>${s.rok ? ' · ' + s.rok : ''}${s.cz ? ' · ' + esc(s.cz) : ''}${s.pow ? ' · ' + fn(s.pow, 2) + ' ha' : ''}</p>
+    <div class='kv'>${kv}</div>${op.length ? `<p class='nota'>${esc(op.join(' · '))}</p>` : ''}
+    ${G.W.has(s.adr) ? `<div style='margin-top:14px'><button class='btn' onclick="otworzKarte('${esc(s.adr)}')">Karta wydzielenia ${esc(krotki(s.adr))}</button></div>` : ''}`);
+}
+function panelSzkice(){
+  const l = Object.values(M.szk).sort((a, b) => b.rok - a.rok || nat(krotki(a.adr), krotki(b.adr)));
+  if (!l.length){ otworzArk('szkL', `<h2>Szkice</h2><p class='nota'>W paczce nie ma szkiców. Przy generowaniu paczki w mLasie zaznacz „Szkice”.</p>`); return; }
+  const gr = {Z:'Zrębowe', O:'Odnowieniowe', '':'Inne'}, h = [`<h2>Szkice</h2>
+    <div class='seg'><button onclick="szkWszystkie('Z')">zrębowe</button><button onclick="szkWszystkie('O')">odnowieniowe</button><button onclick='szkWszystkie(null)'>odznacz</button></div>`];
+  for (const r of ['Z', 'O', '']){
+    const g = l.filter(s => s.rodz === r); if (!g.length) continue;
+    h.push(`<h3>${gr[r]} (${g.length})</h3>`);
+    for (const s of g) h.push(`<div class='wrs'><input type='checkbox' ${ST.szk.has(s.id) ? 'checked' : ''} onchange='przelSzk(${s.id})' aria-label='Pokaż szkic'><span class='nz'><b>${esc(krotki(s.adr))}</b> · ${s.rok || ''} ${esc(s.cz)}${s.pow ? ' · ' + fn(s.pow, 2) + ' ha' : ''}${s.geo.length ? '' : ` <span class='op'>(bez rysunku)</span>`}</span>${s.geo.length ? `<button onclick='pokazSzk(${s.id})' aria-label='Pokaż na mapie'>◎</button>` : ''}</div>`);
+  }
+  h.push(`<p class='nota'>Rysunek ze szkiców w mLasie: granica, szlaki zrywkowe i kierunki obalania i wywozu, ogrodzenia, kępy, biogrupy, gniazda, drzewa biocenotyczne. Dotknij obiektu na mapie, żeby zobaczyć, co to jest.</p>`);
+  otworzArk('szkL', h.join(''));
+}
+function przelSzk(id){ ST.szk.has(id) ? ST.szk.delete(id) : ST.szk.add(id); zapiszUst(); rysujSzk(); }
+function szkWszystkie(r){ ST.szk.clear(); if (r) for (const s of Object.values(M.szk)) if (s.rodz === r && s.geo.length) ST.szk.add(s.id); zapiszUst(); rysujSzk(); panelSzkice(); }
+function pokazSzk(id){ const s = M.szk[id]; if (!s || !s.geo.length) return; if (!ST.szk.has(id)){ ST.szk.add(id); zapiszUst(); rysujSzk(); } zamknijArk(); GPS.sledz = false; odswiezGpsBtn(); dopasuj(bbox(s.geo), 1.3); }
 
 // ---- warstwy z plików (IndexedDB 'warstwy'): obiekt = {t:'pkt'|'lin'|'pol', r:[pierścienie płaskie x,y,...], a:{atrybuty}} ----
 let WPLIKI = [], OBW = null;
