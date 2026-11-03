@@ -659,13 +659,15 @@ async function wczytaj(file, zapamietaj){
     const mm = /_(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})\d{2}/.exec(file.name);
     if (mm) data = new Date(2000 + +mm[1], +mm[2] - 1, +mm[3], +mm[4], +mm[5]);
     M.meta = {plik:file.name, data};
-    // ustawienia: zapamiętany rok; czynności zawsze puste na starcie — mapa bez kolorów, dopóki nie wybierzesz w „Zabiegach” (leśniczy 3.11)
+    // ustawienia: zapamiętany rok i czynności z ostatniego razu; bez zapisu — mapa bez kolorów (leśniczy 3.11);
+    // widok zawsze na całe leśnictwo
     const u = wczytajUst(), rokTeraz = new Date().getFullYear();
     ST.rok = u && M.lata.includes(u.rok) ? u.rok : M.lata.includes(rokTeraz) ? rokTeraz : (M.lata[M.lata.length - 1] || 0);
     ST.status = u && u.status || 'all';
     if (u && typeof u.gr === 'boolean') ST.gr = u.gr;
     if (u && typeof u.grNr === 'boolean') ST.grNr = u.grNr;
     ST.cz.clear();
+    if (u && Array.isArray(u.cz)) u.cz.forEach((c, i) => ST.cz.set(c, i));
     budujUklad();
     if (zapamietaj){
       try { if (navigator.storage && navigator.storage.persist) await navigator.storage.persist(); await idbPut('zip', {nazwa:file.name, mod:file.lastModified, blob:new Blob([buf])}); }
