@@ -620,11 +620,11 @@ function szacHtml(s){
 // ---- mapa terenowa (2026-11-03): reszta pisana od nowa pod telefon --------------------------
 let M = null, G = null;
 const V = {cx:0, cy:0, m:5};          // środek widoku (PL-1992) i metry na piksel ekranu
-const ST = {rok:0, cz:new Map(), status:'all', kontrRok:0, gr:true, grNr:true, moje:true};
+const ST = {rok:0, cz:new Map(), status:'all', kontrRok:0, gr:true, grNr:true, moje:true, zew:false};
 const GPS = {id:null, sledz:false, p:null, k:null};
 let KARTA = null, ARK = '';
 const LS = 'mapaTeren.v1';
-function zapiszUst(){ try { localStorage.setItem(LS, JSON.stringify({rok:ST.rok, cz:[...ST.cz.keys()], status:ST.status, gr:ST.gr, grNr:ST.grNr, moje:ST.moje})); } catch (e) {} }
+function zapiszUst(){ try { localStorage.setItem(LS, JSON.stringify({rok:ST.rok, cz:[...ST.cz.keys()], status:ST.status, gr:ST.gr, grNr:ST.grNr, moje:ST.moje, zew:ST.zew})); } catch (e) {} }
 function wczytajUst(){ try { return JSON.parse(localStorage.getItem(LS) || 'null'); } catch (e) { return null; } }
 function kolorCz(cz){ return PALETA[ST.cz.get(cz) % PALETA.length]; }
 
@@ -698,6 +698,7 @@ async function wczytaj(file, zapamietaj){
     if (u && typeof u.gr === 'boolean') ST.gr = u.gr;
     if (u && typeof u.grNr === 'boolean') ST.grNr = u.grNr;
     if (u && typeof u.moje === 'boolean') ST.moje = u.moje;
+    if (u && typeof u.zew === 'boolean') ST.zew = u.zew;
     ST.cz.clear();
     if (u && Array.isArray(u.cz)) u.cz.forEach((c, i) => ST.cz.set(c, i));
     budujUklad();
@@ -873,6 +874,9 @@ function panelInfo(kom){
     ${WPLIKI.map(w => `<div class='wrs'><input type='checkbox' ${w.wid ? 'checked' : ''} onchange="wPrzel('${w.id}',this.checked)" aria-label='Pokaż warstwę'><span class='kw' style='background:${w.kol}' onclick="wKolor('${w.id}')" title='Zmień kolor'></span><span class='nz'>${esc(w.nazwa)} <span class='op'>${w.f.length}</span></span><button onclick="wPokaz('${w.id}')" aria-label='Pokaż na mapie'>◎</button><button onclick="wUsun('${w.id}')" aria-label='Usuń warstwę'>🗑</button></div>`).join('')}
     <div style='margin-top:12px'><button class='btn' onclick='dodajWarstwe()'>＋ Dodaj warstwę z pliku</button></div>
     <p class='nota'>ZIP z plikami SHP (+ DBF), KML lub KMZ (Google Earth), GPX (ślady i punkty z innych aplikacji), GeoJSON. Układ WGS84, PL-1992 albo PL-2000 rozpoznaję sam. Warstwa zostaje w tym telefonie. Kolor zmienisz, dotykając kwadracika.</p>
+    <h3>GPS</h3>
+    <label class='przel'><input type='checkbox' ${ST.zew ? 'checked' : ''} onchange='ST.zew=this.checked;zapiszUst();if(GPS.p){rysujGps();odswiezPasek()}'> Odbiornik zewnętrzny (RTK)</label>
+    <p class='nota'>Włącz, gdy pozycja idzie z odbiornika przez aplikację pośredniczącą (np. Bluetooth GNSS). Taka aplikacja podaje telefonowi dokładność wyliczoną z HDOP, a nie błąd RTK, więc mapa nie pokazuje wtedy „±”, tylko „odbiornik”. Czy jest FIX, sprawdzasz w tej aplikacji.</p>
     <h3>Paczka</h3>
     <p class='nota'>GPS: ${window.isSecureContext ? 'ta strona może używać lokalizacji' : '<b>Chrome blokuje lokalizację dla strony otwartej w ten sposób</b> (' + esc(location.protocol) + ')'}.</p>
     <p class='nota'>Mapa pokazuje stan z tej paczki, nie bieżący stan SILP. Po nowej synchronizacji mLasa wczytaj świeży ZIP.</p>
@@ -1051,13 +1055,16 @@ function gpsPrzelacz(){
   odswiezGpsBtn();
 }
 function odswiezGpsBtn(){ const b = document.getElementById('bGps'); if (b) b.className = GPS.id == null ? '' : GPS.sledz ? 'on' : 'pol'; }
+// dokładność do paska i kart: przy odbiorniku zewnętrznym liczba z Androida jest wyliczona z HDOP i nic nie mówi o RTK
+function dokTxt(ac){ return ST.zew ? '🛰 odbiornik' : '±' + (ac < 1 ? fn(Math.max(1, Math.round(ac * 100))) + ' cm' : fn(Math.round(ac)) + ' m'); }
+const accPom = () => ST.zew ? 0 : GPS.p.acc;   // do pomiarów: przy odbiorniku bez ostrzeżenia „wynik przybliżony”
+function odswiezPasek(){ if (GPS.p) nowaPozycja({coords:{latitude:GPS.wgs[0], longitude:GPS.wgs[1], accuracy:GPS.p.acc}}); }
 function nowaPozycja(pos){
   const [x, y] = do1992(pos.coords.latitude, pos.coords.longitude), pierwsza = !GPS.p;
-  GPS.p = {x, y, acc:pos.coords.accuracy};
+  GPS.p = {x, y, acc:pos.coords.accuracy}; GPS.wgs = [pos.coords.latitude, pos.coords.longitude];
   if (GPS.sledz){ V.cx = x; V.cy = y; if (pierwsza && V.m > 1.5) V.m = 1.5; ustawWidok(); } else rysujGps();
   const f = wydzW(x, y), poprz = GPS.k; GPS.k = f ? f.k : null;
-  // z odbiornikiem RTK (przez pozorowaną lokalizację Androida) dokładność schodzi do cm — wtedy pokazujemy cm, nie „±0 m”
-  const ac = pos.coords.accuracy, dok = '±' + (ac < 1 ? fn(Math.max(1, Math.round(ac * 100))) + ' cm' : fn(Math.round(ac)) + ' m');
+  const dok = dokTxt(pos.coords.accuracy);
   if (f){
     const pr = M.poz.filter(p => p.adr === f.k && p.rok === ST.rok).map(p => p.cz);
     pokazGdzie(`📍 ${krotki(f.k)} · ${dok}${pr.length ? ' · ' + ST.rok + ': ' + [...new Set(pr)].join(', ') : ''} ›`);
@@ -1081,7 +1088,7 @@ function rysujGps(){
   const el = document.getElementById('l-gps'); if (!el) return;
   if (!GPS.p){ el.innerHTML = ''; return; }
   const x = GPS.p.x.toFixed(1), y = (-GPS.p.y).toFixed(1);
-  el.innerHTML = `<circle class='gps-a' cx='${x}' cy='${y}' r='${Math.max(GPS.p.acc, 1).toFixed(1)}' stroke-width='${V.m.toFixed(2)}'/>` +
+  el.innerHTML = `<circle class='gps-a' cx='${x}' cy='${y}' r='${ST.zew ? 1 : Math.max(GPS.p.acc, 1).toFixed(1)}' stroke-width='${V.m.toFixed(2)}'/>` +
     `<circle class='gps-p' cx='${x}' cy='${y}' r='${(8 * V.m).toFixed(2)}' stroke-width='${(3 * V.m).toFixed(2)}'/>`;
 }
 
@@ -1120,7 +1127,7 @@ const fWgs = (x, y) => { const [la, lo] = doWgs(x, y); return la.toFixed(6) + ',
 function odCiebie(x, y){
   if (!GPS.p) return `<span class='op'>włącz 📍, a zobaczysz odległość i kierunek</span>`;
   const dx = x - GPS.p.x, dy = y - GPS.p.y, d = Math.hypot(dx, dy), az = (Math.atan2(dx, dy) * 180 / Math.PI + 360) % 360;
-  return `<b>${d < 10 ? fn(d, 1) : fn(Math.round(d))} m</b>, kierunek <b>${fn(Math.round(az))}°</b> (${KIER[Math.round(az / 45) % 8]})<span class='op'> · GPS ±${GPS.p.acc < 1 ? fn(Math.round(GPS.p.acc * 100)) + ' cm' : fn(Math.round(GPS.p.acc)) + ' m'}</span>`;
+  return `<b>${d < 10 ? fn(d, 1) : fn(Math.round(d))} m</b>, kierunek <b>${fn(Math.round(az))}°</b> (${KIER[Math.round(az / 45) % 8]})<span class='op'> · GPS ${dokTxt(GPS.p.acc)}</span>`;
 }
 function bbR(rings){ const b = [Infinity, Infinity, -Infinity, -Infinity]; for (const r of rings) for (let i = 0; i < r.length; i += 2){ b[0] = Math.min(b[0], r[i]); b[1] = Math.min(b[1], r[i + 1]); b[2] = Math.max(b[2], r[i]); b[3] = Math.max(b[3], r[i + 1]); } return b; }
 function odlOdc(x, y, ax, ay, bx, by){ const dx = bx - ax, dy = by - ay, l = dx * dx + dy * dy; const t = l ? Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / l)) : 0; return Math.hypot(x - ax - t * dx, y - ay - t * dy); }
@@ -1156,7 +1163,7 @@ function mierzGps(){
     if (GPS.id == null) gpsPrzelacz();
     pokazGdzie('📍 Czekam na GPS. Dotknij „tu stoję” jeszcze raz, gdy pojawi się niebieska kropka.', true); return;
   }
-  MI.pts.push([GPS.p.x, GPS.p.y, GPS.p.acc]); rysujMier();
+  MI.pts.push([GPS.p.x, GPS.p.y, accPom()]); rysujMier();
 }
 function wynikPomiaru(pts, jakoPole){
   const n = pts.length, r = plaski(pts);
