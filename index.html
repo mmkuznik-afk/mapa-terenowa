@@ -871,7 +871,7 @@ function podpisy(){
   o.style.opacity = V.m < 2.6 ? .55 : 1;
   // kamienie dopiero od skali, przy której kropki się nie zlewają; numery jeszcze bliżej
   const g = document.getElementById('l-gr'), gl = document.getElementById('l-grLab');
-  g.style.display = ST.gr && V.m < 4 ? '' : 'none';
+  g.style.display = ST.gr && V.m < 1.5 ? '' : 'none';
   gl.style.display = ST.gr && ST.grNr && V.m < .7 ? '' : 'none';
   gl.setAttribute('font-size', (11 * V.m).toFixed(3)); gl.setAttribute('stroke-width', (3 * V.m).toFixed(3));
   gl.setAttribute('transform', `translate(0 ${(-12 * V.m).toFixed(3)})`);
@@ -944,7 +944,7 @@ const wydzW = (x, y) => G.wydz.find(f => f.g.t === 'pol' && x >= f.bb[0] && x <=
 function dotkniecie(px, py){
   const [x, y] = swiat(px, py);
   // najpierw kamień w promieniu ok. 16 px palca, dopiero potem wydzielenie
-  if (ST.gr && V.m < 4){
+  if (ST.gr && V.m < 1.5){
     let best = null, bd = 16 * V.m;
     for (const p of G.gr){ const d = Math.hypot(p.x - x, p.y - y); if (d < bd){ bd = d; best = p; } }
     if (best){ otworzPunkt(best); return; }
