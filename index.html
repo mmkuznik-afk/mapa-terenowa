@@ -88,8 +88,12 @@ button,select,input,textarea{font:inherit;color:inherit}
 .przel input{width:22px;height:22px}
 .lab{paint-order:stroke;stroke:#fff;stroke-linejoin:round;fill:#222;text-anchor:middle;dominant-baseline:central;font-family:system-ui,sans-serif;pointer-events:none}
 .lab-o{font-weight:700}
-.gps-a{fill:#1a73e8;fill-opacity:.13;stroke:#1a73e8;stroke-opacity:.5}
-.gps-p{fill:#1a73e8;stroke:#fff}
+/* pozycja GPS (5.11, v18): mała turkusowa kropka z ciemną obwódką i tętniącym pierścieniem; w ruchu strzałka w kierunku marszu.
+   Grupa #gpsG ma skalę = px ekranu, więc wymiary niżej są w pikselach. Turkusu nie ma nigdzie indziej na mapie. */
+.gps-a{fill:#00c8e6;fill-opacity:.12;stroke:#0097b2;stroke-opacity:.6}
+.gps-p,.gps-s{fill:#00e0ff;stroke:#00303d;stroke-width:1.5;stroke-linejoin:round}
+.gps-r{fill:none;stroke:#00c8e6;stroke-width:1.6;transform-box:fill-box;transform-origin:center;animation:gpsPuls 2s ease-out infinite}
+@keyframes gpsPuls{from{transform:scale(.35);opacity:.95}to{transform:scale(1);opacity:0}}
 /* sterowanie */
 .gora{position:fixed;left:8px;right:8px;top:calc(8px + env(safe-area-inset-top,0px));display:flex;gap:6px;align-items:center;z-index:5;pointer-events:none}
 .gora>*{pointer-events:auto}
@@ -100,8 +104,8 @@ button,select,input,textarea{font:inherit;color:inherit}
 .sp{flex:1}
 .prawo{position:fixed;right:8px;top:calc(40px + env(safe-area-inset-top,0px));display:flex;flex-direction:column;gap:5px;z-index:5}
 .prawo button{width:28px;height:28px;border-radius:7px;border:1px solid var(--line);background:var(--card);box-shadow:0 1px 4px rgba(0,0,0,.18);font-size:13px;line-height:1;cursor:pointer;padding:0}
-#bGps.on{background:#1a73e8;color:#fff;border-color:#1a73e8}
-#bGps.pol{background:#dbe8fd;color:#1a4fa8;border-color:#1a73e8}
+#bGps.on{background:#0097b2;color:#fff;border-color:#0097b2}
+#bGps.pol{background:#d6f6fb;color:#00596b;border-color:#0097b2}
 .dol{position:fixed;left:8px;right:8px;bottom:calc(8px + env(safe-area-inset-bottom,0px));z-index:5;display:flex;flex-direction:column;gap:6px;pointer-events:none}
 .dol>*{pointer-events:auto}
 .leg{display:flex;flex-wrap:wrap;gap:5px;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:6px 9px;box-shadow:0 1px 6px rgba(0,0,0,.18);font-size:13px;max-height:30vh;overflow:auto}
@@ -1084,7 +1088,7 @@ function gpsPrzelacz(){
   // Chrome daje GPS tylko „bezpiecznej” stronie: https albo file://; plik otwarty z Moich plików ma adres content:// i GPS-u nie dostaje
   if (!window.isSecureContext){ pokazGdzie(`⚠ Chrome nie daje GPS stronie otwartej z „Moich plików” (adres ${location.protocol}). Trzeba ją otworzyć inaczej.`, true); return; }
   if (GPS.id != null && GPS.sledz){
-    navigator.geolocation.clearWatch(GPS.id); GPS.id = null; GPS.sledz = false; GPS.p = null; GPS.k = null;
+    navigator.geolocation.clearWatch(GPS.id); GPS.id = null; GPS.sledz = false; GPS.p = null; GPS.k = null; GPS.h = null;
     if (MI.slad){ MI.slad = false; rysujMier(); }
     puscEkran(); rysujGps(); pokazGdzie(''); odswiezGpsBtn(); return;
   }
@@ -1104,6 +1108,8 @@ function odswiezPasek(){ if (GPS.p) nowaPozycja({coords:{latitude:GPS.wgs[0], lo
 function nowaPozycja(pos){
   const [x, y] = do1992(pos.coords.latitude, pos.coords.longitude), pierwsza = !GPS.p;
   GPS.p = {x, y, acc:pos.coords.accuracy}; GPS.wgs = [pos.coords.latitude, pos.coords.longitude];
+  // kierunek marszu: Android podaje go tylko w ruchu; przy staniu (prędkość < 0,5 m/s) wraca kropka
+  if ('heading' in pos.coords){ const hd = pos.coords.heading, sp = pos.coords.speed; GPS.h = hd != null && !isNaN(hd) && !(sp != null && sp < 0.5) ? hd : null; }
   if (GPS.sledz){ V.cx = x; V.cy = y; if (pierwsza && V.m > 1.5) V.m = 1.5; ustawWidok(); } else rysujGps();
   const f = wydzW(x, y), poprz = GPS.k; GPS.k = f ? f.k : null;
   const dok = dokTxt(pos.coords.accuracy);
@@ -1130,9 +1136,15 @@ function pokazGdzie(t, uw){ const el = document.getElementById('gdzie'); if (!el
 function rysujGps(){
   const el = document.getElementById('l-gps'); if (!el) return;
   if (!GPS.p){ el.innerHTML = ''; return; }
-  const x = GPS.p.x.toFixed(1), y = (-GPS.p.y).toFixed(1);
-  el.innerHTML = `<circle class='gps-a' cx='${x}' cy='${y}' r='${ST.zew ? 1 : Math.max(GPS.p.acc, 1).toFixed(1)}' stroke-width='${V.m.toFixed(2)}'/>` +
-    `<circle class='gps-p' cx='${x}' cy='${y}' r='${(8 * V.m).toFixed(2)}' stroke-width='${(3 * V.m).toFixed(2)}'/>`;
+  // elementy budowane raz i tylko przesuwane — inaczej pierścień zaczynałby tętnić od nowa przy każdej pozycji
+  if (!el.querySelector('#gpsG')) el.innerHTML = `<circle id='gpsA' class='gps-a'/><g id='gpsG'><circle class='gps-r' r='11'/>` +
+    `<circle id='gpsP' class='gps-p' r='3.5'/><path id='gpsS' class='gps-s' d='M0 -6.5L4.5 5L0 2.5L-4.5 5Z'/></g>`;
+  const x = GPS.p.x.toFixed(1), y = (-GPS.p.y).toFixed(1), h = GPS.h;
+  const a = el.querySelector('#gpsA');
+  a.setAttribute('cx', x); a.setAttribute('cy', y); a.setAttribute('r', ST.zew ? 1 : Math.max(GPS.p.acc, 1).toFixed(1)); a.setAttribute('stroke-width', V.m.toFixed(2));
+  el.querySelector('#gpsG').setAttribute('transform', `translate(${x} ${y}) scale(${V.m.toFixed(4)})`);
+  el.querySelector('#gpsP').style.display = h == null ? '' : 'none';
+  const s = el.querySelector('#gpsS'); s.style.display = h == null ? 'none' : ''; if (h != null) s.setAttribute('transform', `rotate(${h.toFixed(0)})`);
 }
 
 // ---- odwzorowania Gaussa-Krügera w obie strony (szereg Krügera do n^4): PL-1992 i strefy PL-2000 -------------------
@@ -1204,7 +1216,7 @@ function mierzPrzelacz(){
 function mierzGps(){
   if (!GPS.p){
     if (GPS.id == null) gpsPrzelacz();
-    pokazGdzie('📍 Czekam na GPS. Dotknij „tu stoję” jeszcze raz, gdy pojawi się niebieska kropka.', true); return;
+    pokazGdzie('📍 Czekam na GPS. Dotknij „tu stoję” jeszcze raz, gdy pojawi się turkusowa kropka.', true); return;
   }
   MI.pts.push([GPS.p.x, GPS.p.y, accPom()]); rysujMier();
 }
