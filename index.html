@@ -917,7 +917,7 @@ function panelInfo(kom){
     <p class='nota'>ZIP z plikami SHP (+ DBF), KML lub KMZ (Google Earth), GPX (ślady i punkty z innych aplikacji), GeoJSON. Układ WGS84, PL-1992 albo PL-2000 rozpoznaję sam. Warstwa zostaje w tym telefonie. Kolor zmienisz, dotykając kwadracika.</p>
     <h3>GPS</h3>
     <label class='przel'><input type='checkbox' ${ST.zew ? 'checked' : ''} onchange='ST.zew=this.checked;zapiszUst();if(GPS.p){rysujGps();odswiezPasek()}'> Odbiornik zewnętrzny (RTK)</label>
-    <p class='nota'>Włącz, gdy pozycja idzie z odbiornika przez aplikację pośredniczącą (np. Bluetooth GNSS). Taka aplikacja podaje telefonowi dokładność wyliczoną z HDOP, a nie błąd RTK, więc mapa nie pokazuje wtedy „±”, tylko „odbiornik”. Czy jest FIX, sprawdzasz w tej aplikacji.</p>
+    <p class='nota'>Włącz, gdy pozycja idzie z odbiornika przez aplikację pośredniczącą (np. Bluetooth GNSS). Taka aplikacja podaje telefonowi dokładność wyliczoną z HDOP, a nie błąd RTK, więc mapa nie pokazuje wtedy „±”. Zamiast tego, gdy stoisz, mierzy rozrzut pozycji z ostatnich 10 s: do 4 cm „fix”, do 50 cm „float?”, więcej „bez RTK”. W marszu pokazuje samo 🛰. To ocena powtarzalności, nie gwarancja: pewny stan FIX pokazuje aplikacja odbiornika.</p>
     <h3>Paczka</h3>
     <p class='nota'>GPS: ${window.isSecureContext ? 'ta strona może używać lokalizacji' : '<b>Chrome blokuje lokalizację dla strony otwartej w ten sposób</b> (' + esc(location.protocol) + ')'}.</p>
     <p class='nota'>Mapa pokazuje stan z tej paczki, nie bieżący stan SILP. Po nowej synchronizacji mLasa wczytaj świeży ZIP.</p>
@@ -1101,7 +1101,7 @@ function gpsPrzelacz(){
   // Chrome daje GPS tylko „bezpiecznej” stronie: https albo file://; plik otwarty z Moich plików ma adres content:// i GPS-u nie dostaje
   if (!window.isSecureContext){ pokazGdzie(`⚠ Chrome nie daje GPS stronie otwartej z „Moich plików” (adres ${location.protocol}). Trzeba ją otworzyć inaczej.`, true); return; }
   if (GPS.id != null && GPS.sledz){
-    navigator.geolocation.clearWatch(GPS.id); GPS.id = null; GPS.sledz = false; GPS.p = null; GPS.k = null; GPS.h = null;
+    navigator.geolocation.clearWatch(GPS.id); GPS.id = null; GPS.sledz = false; GPS.p = null; GPS.k = null; GPS.h = null; GPS.hist = []; GPS.roz = GPS.rozOst = null;
     if (MI.slad){ MI.slad = false; rysujMier(); }
     puscEkran(); rysujGps(); rysujCel(); pokazGdzie(''); odswiezGpsBtn(); return;
   }
@@ -1115,14 +1115,35 @@ function gpsPrzelacz(){
 }
 function odswiezGpsBtn(){ const b = document.getElementById('bGps'); if (b) b.className = GPS.id == null ? '' : GPS.sledz ? 'on' : 'pol'; }
 // dokładność do paska i kart: przy odbiorniku zewnętrznym liczba z Androida jest wyliczona z HDOP i nic nie mówi o RTK
-function dokTxt(ac){ return ST.zew ? '🛰 odbiornik' : '±' + (ac < 1 ? fn(Math.max(1, Math.round(ac * 100))) + ' cm' : fn(Math.round(ac)) + ' m'); }
-const accPom = () => ST.zew ? 0 : GPS.p.acc;   // do pomiarów: przy odbiorniku bez ostrzeżenia „wynik przybliżony”
-function odswiezPasek(){ if (GPS.p) nowaPozycja({coords:{latitude:GPS.wgs[0], longitude:GPS.wgs[1], accuracy:GPS.p.acc}}); }
+function dokTxt(ac){ return ST.zew ? '🛰' + (GPS.roz != null ? ' ' + rozTxt(GPS.roz) : '') : '±' + (ac < 1 ? fn(Math.max(1, Math.round(ac * 100))) + ' cm' : fn(Math.round(ac)) + ' m'); }
+// rozrzut (5.11, v20): przy odbiorniku liczba „dokładności” z Androida nic nie mówi o RTK, więc mapa mierzy, jak skaczą
+// pozycje na postoju z ostatnich 10 s (odchylenie średniokwadratowe od średniej). Fix RTK: 1–3 cm, float: dziesiątki cm, bez poprawek: metry.
+// Progi wstępne — do sprawdzenia w terenie z „Fix quality” w Bluetooth GNSS. W ruchu okno się zeruje i pasek pokazuje samo 🛰.
+const ROZ_FIX = .04, ROZ_FLOAT = .5;
+const rozTyp = r => r <= ROZ_FIX ? 'fix' : r <= ROZ_FLOAT ? 'float?' : 'bez RTK';
+const rozTxt = r => (r < 1 ? fn(Math.max(1, Math.round(r * 100))) + ' cm' : fn(r, 1) + ' m') + ' · ' + rozTyp(r);
+function rmsH(h){ let mx = 0, my = 0; for (const p of h){ mx += p[0]; my += p[1]; } mx /= h.length; my /= h.length; let s = 0; for (const p of h) s += (p[0] - mx) ** 2 + (p[1] - my) ** 2; return [mx, my, Math.sqrt(s / h.length)]; }
+function rozrzut(x, y, sp, ts){
+  const h = GPS.hist || (GPS.hist = []), t = ts || Date.now();
+  if (h.length && h[h.length - 1][2] === t) return GPS.roz;   // ta sama pozycja podana drugi raz
+  if (sp != null && !isNaN(sp) && sp > .3) h.length = 0;      // idziesz
+  else if (h.length >= 5){ const [mx, my, r] = rmsH(h); if (Math.hypot(x - mx, y - my) > Math.max(1, 5 * r)) h.length = 0; }   // przeszedłeś kawałek
+  h.push([x, y, t]);
+  while (h.length && t - h[0][2] > 10000) h.shift();
+  if (h.length < 5 || h[h.length - 1][2] - h[0][2] < 4000) return null;
+  // ruch bez podanej prędkości: średnie z pierwszej i drugiej połowy okna rozjeżdżają się bardziej niż przy samym szumie
+  const r = rmsH(h)[2], m = h.length >> 1, a = rmsH(h.slice(0, m)), b = rmsH(h.slice(h.length - m));
+  return Math.hypot(a[0] - b[0], a[1] - b[1]) > 1.2 * r ? null : r;
+}
+// do pomiarów: przy odbiorniku ostatni zmierzony rozrzut (na postoju), bez ostrzeżenia „wynik przybliżony”, dopóki jest poniżej metra
+const accPom = () => ST.zew ? (GPS.rozOst || 0) : GPS.p.acc;
+function odswiezPasek(){ if (GPS.p) nowaPozycja({coords:{latitude:GPS.wgs[0], longitude:GPS.wgs[1], accuracy:GPS.p.acc}, odsw:true}); }
 function nowaPozycja(pos){
   const [x, y] = do1992(pos.coords.latitude, pos.coords.longitude), pierwsza = !GPS.p;
   GPS.p = {x, y, acc:pos.coords.accuracy}; GPS.wgs = [pos.coords.latitude, pos.coords.longitude];
   // kierunek marszu: Android podaje go tylko w ruchu; przy staniu (prędkość < 0,5 m/s) wraca kropka
   if ('heading' in pos.coords){ const hd = pos.coords.heading, sp = pos.coords.speed; GPS.h = hd != null && !isNaN(hd) && !(sp != null && sp < 0.5) ? hd : null; }
+  if (!pos.odsw){ GPS.roz = rozrzut(x, y, pos.coords.speed, pos.timestamp); if (GPS.roz != null) GPS.rozOst = GPS.roz; }
   if (GPS.sledz){ V.cx = x; V.cy = y; if (pierwsza && V.m > 1.5) V.m = 1.5; ustawWidok(); } else rysujGps();
   const f = wydzW(x, y), poprz = GPS.k; GPS.k = f ? f.k : null;
   const dok = dokTxt(pos.coords.accuracy);
@@ -1155,7 +1176,7 @@ function rysujGps(){
     `<circle id='gpsP' class='gps-p' r='3.5'/><path id='gpsS' class='gps-s' d='M0 -6.5L4.5 5L0 2.5L-4.5 5Z'/></g>`;
   const x = GPS.p.x.toFixed(1), y = (-GPS.p.y).toFixed(1), h = GPS.h;
   const a = el.querySelector('#gpsA');
-  a.setAttribute('cx', x); a.setAttribute('cy', y); a.setAttribute('r', ST.zew ? 1 : Math.max(GPS.p.acc, 1).toFixed(1)); a.setAttribute('stroke-width', V.m.toFixed(2));
+  a.setAttribute('cx', x); a.setAttribute('cy', y); a.setAttribute('r', ST.zew ? Math.max(GPS.rozOst || 1, .05).toFixed(2) : Math.max(GPS.p.acc, 1).toFixed(1)); a.setAttribute('stroke-width', V.m.toFixed(2));
   el.querySelector('#gpsG').setAttribute('transform', `translate(${x} ${y}) scale(${V.m.toFixed(4)})`);
   el.querySelector('#gpsP').style.display = h == null ? '' : 'none';
   const s = el.querySelector('#gpsS'); s.style.display = h == null ? 'none' : ''; if (h != null) s.setAttribute('transform', `rotate(${h.toFixed(0)})`);
@@ -1294,6 +1315,7 @@ function rysujMier(){
   else t = `Długość <b>${fM(w.dl)}</b>${MI.pole ? ' · 3. punkt da pole' : ''}`;
   if (MI.slad) t = `<b style='color:#e8590c'>● Nagrywam ślad</b> · ${n} pkt<br>` + t + `<br><span class='op'>Idź po granicy. Ekran zostaw włączony, bo przy wygaszonym telefon gubi GPS.${MI.odrz ? ` Pominięte słabe pozycje: ${MI.odrz}.` : ''}</span>`;
   if (acc >= 1) t += `<br><span class='op'>Punkty z GPS ±${fn(Math.round(acc))} m: wynik przybliżony.</span>`;
+  else if (ST.zew && acc > 0) t += `<br><span class='op'>🛰 rozrzut przy punktach do ${rozTxt(acc)}</span>`;
   bar.innerHTML = `<div class='wy'>📏 ${t}</div><div class='rz'>
     <button class='${MI.pole ? '' : 'on'}' onclick='MI.pole=false;rysujMier()'>Linia</button><button class='${MI.pole ? 'on' : ''}' onclick='MI.pole=true;rysujMier()'>Pole</button>
     <button class='${MI.slad ? 'on' : ''}' onclick='sladPrzelacz()'>${MI.slad ? '⏸ pauza' : n && !MI.slad && MI.pts.some(q => q.length > 2) ? '🚶 dalej' : '🚶 ślad'}</button>
@@ -1316,6 +1338,7 @@ async function mierzZapiszOk(typ){
   const nz = (document.getElementById('zNazwa').value || '').trim() || TYP_N[typ], op = (document.getElementById('zOpis').value || '').trim();
   const acc = Math.max(0, ...MI.pts.map(q => q[2] || 0));
   const o = {id:Date.now().toString(36), typ, nazwa:nz, opis:op, pts:MI.pts.map(q => [+q[0].toFixed(2), +q[1].toFixed(2)]), acc:acc >= 1 ? Math.round(acc) : 0, data:new Date().toISOString()};
+  if (ST.zew && acc > 0 && acc < 1) o.roz = +acc.toFixed(3);   // rozrzut odbiornika przy pomiarze (v20)
   try { await zmienMoje(() => MOJE.push(o)); } catch (e) { alert('Nie udało się zapisać: ' + (e && e.message || e)); }
   MI.on = true; mierzPrzelacz();
   ST.moje = true; zapiszUst(); rysujMoje(); otworzMoje(o.id);
@@ -1369,7 +1392,7 @@ function rysujMojeKarte(){
   otworzArk('mojeK', `<h2>${esc(o.nazwa)}</h2><p class='op'>${TYP_N[o.typ]} · zapisane ${esc(new Date(o.data).toLocaleString('pl-PL', {dateStyle:'short', timeStyle:'short'}))}</p>
     <div class='kv'>${kv}${f ? `<span>Wydzielenie</span><span>${esc(krotki(f.k))}</span>` : ''}</div>
     ${o.opis ? `<p>${esc(o.opis).replace(/\n/g, '<br>')}</p>` : ''}
-    ${o.acc ? `<p class='nota'>Zmierzone z GPS ±${o.acc} m: wynik przybliżony.</p>` : ''}
+    ${o.acc ? `<p class='nota'>Zmierzone z GPS ±${o.acc} m: wynik przybliżony.</p>` : ''}${o.roz ? `<p class='nota'>🛰 Odbiornik: rozrzut przy pomiarze do ${rozTxt(o.roz)}.</p>` : ''}
     <div style='margin-top:14px;display:flex;gap:8px;flex-wrap:wrap'>${(s => btnProw(s[0], s[1], o.nazwa))(srodekMoje(o))}<button class='btn' onclick="pokazNaMapie(bbR([plaski(MOJE.find(q=>q.id==='${o.id}').pts)]))">◎ Pokaż na mapie</button>
     ${f ? `<button class='btn' onclick="otworzKarte('${esc(f.k)}')">Karta ${esc(krotki(f.k))}</button>` : ''}
     ${kam ? `<button class='btn' onclick="otworzPunkt(G.gr[${G.gr.indexOf(kam)}])">Kamień ${esc(kam.nr)}</button>` : ''}
@@ -1389,7 +1412,7 @@ function panelMoje(){
     <p class='nota'>Zapisane tylko w pamięci przeglądarki tego telefonu. Wyczyszczenie danych Chrome albo odinstalowanie mapy je skasuje, więc co jakiś czas zrób eksport. Plik trafia do Pobranych.</p>`);
 }
 function eksportMoje(fmt){
-  const pr = o => { const w = wynikPomiaru(o.pts, o.typ === 'pol'); return {nazwa:o.nazwa, opis:o.opis, typ:TYP_N[o.typ], data:o.data, dlugosc_m:w.dl != null && o.typ === 'lin' ? +w.dl.toFixed(2) : null, pole_ha:w.pole != null ? +(w.pole / 1e4).toFixed(4) : null, gps_dokl_m:o.acc || null}; };
+  const pr = o => { const w = wynikPomiaru(o.pts, o.typ === 'pol'); return {nazwa:o.nazwa, opis:o.opis, typ:TYP_N[o.typ], data:o.data, dlugosc_m:w.dl != null && o.typ === 'lin' ? +w.dl.toFixed(2) : null, pole_ha:w.pole != null ? +(w.pole / 1e4).toFixed(4) : null, gps_dokl_m:o.acc || null, rozrzut_m:o.roz || null}; };
   if (fmt === 'geojson'){
     const geo = o => o.typ === 'pkt' ? {type:'Point', coordinates:o.pts[0]} : o.typ === 'lin' ? {type:'LineString', coordinates:o.pts} : {type:'Polygon', coordinates:[[...o.pts, o.pts[0]]]};
     const fc = {type:'FeatureCollection', name:'moje-punkty', crs:{type:'name', properties:{name:'urn:ogc:def:crs:EPSG::2180'}}, features:MOJE.map(o => ({type:'Feature', properties:pr(o), geometry:geo(o)}))};
