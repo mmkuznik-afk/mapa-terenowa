@@ -672,7 +672,7 @@ async function wczytaj(file, zapamietaj){
       const sh = await zipWyjmij(buf, new RegExp('^' + folder + n + '\\.shp$', 'i')), db = await zipWyjmij(buf, new RegExp('^' + folder + n + '\\.dbf$', 'i'));
       if (!sh || !db) return [];
       const g = czytajShp(sh), a = czytajDbf(db);
-      return przygotuj(g.map((x, i) => ({g:x, a:a[i] || {}})).filter(f => f.g && !f.a._usun));
+      return przygotuj(g.map((x, i) => ({g:x, a:a[i] || {}})).filter(f => f.g && !f.a._usun && !(f.g.rings && !f.g.rings.length)));   // puste szkice z mLasa (5.11) wywracały wczytanie
     };
     const [wydz, oddz, les, drogi, cieki, grp, szPol, szLin, szPkt, szPnsw] = await Promise.all(['wydz_pol', 'oddz_pol', 'les_pol', 'kom_lin', 'ciek_lin', 'gr_pkt', 'szkic_pol', 'szkic_lin', 'szkic_pkt', 'szkic_pnsw'].map(L));
     if (!wydz.length) throw new Error('W paczce nie ma warstwy wydzieleń (wydz_pol). Potrzebny pełny ZIP z mLasa.');
