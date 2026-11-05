@@ -163,8 +163,8 @@ button,select,input,textarea{font:inherit;color:inherit}
 <script>
 // ---- wspólne z mapą przenośną (mapa-przenosna.html, stan z 16.10.2026): czytniki, model, karta wydzielenia ----
 'use strict';
-const KOLCZYN = '10-32-1-02';
-const NAZWY_LESN = {'10-32-1-01':'Rudnica', '10-32-1-02':'Kołczyn'};
+const KOLCZYN = '';   // leśnictwo z paczki: najczęstszy adres w f_arodes
+const NAZWY_LESN = {};   // nazwa z paczki (f_forest_range)
 let LESN = KOLCZYN;
 const DZIALY = {POZ:'Użytkowanie', HOD:'Hodowla', OCHRL:'Ochrona lasu', OCHRP:'Ochrona ppoż.', OCHRPR:'Ochrona przyrody', UTRZ:'Utrzymanie', UBOCP:'Uboczne'};
 // nazwy czynności — te same co w kokpicie (pewne wg wiki/pojecia/adres-lesny-i-kody.md, „?” = niepewne)
@@ -191,7 +191,7 @@ const D = v => (typeof v === 'number') ? v : (v == null || v === '' ? 0 : (parse
 const fn = (n, d = 0) => Number(n || 0).toLocaleString('pl-PL', {minimumFractionDigits:d, maximumFractionDigits:d});
 const nat = (a, b) => String(a).localeCompare(String(b), 'pl', {numeric:true});
 function jedn(u){ const x = S(u).toUpperCase(); return ({HA:'ha', M3:'m³', SZT:'szt.', KM:'km', KMTR:'km', MB:'mb', H:'h'})[x] || x.toLowerCase(); }
-// klucz adresu: bez spacji, bez końcowego -00 i pustych członów: „10-32-1-02-32 -f -00” → „10-32-1-02-32-f”
+// klucz adresu: bez spacji, bez końcowego -00 i pustych członów: „10-01-1-01-12 -a -00” → „10-01-1-01-12-a”
 const klucz = a => S(a).replace(/\s/g, '').replace(/-00$/, '').replace(/-+$/, '');
 function krotki(a){
   let k = klucz(a);
@@ -413,7 +413,7 @@ function zbuduj(db){
   return {lesn:LESN, nazwa, poz:Object.values(poz), lata, stosy:st.lista, szk:szkice(db, T, adr), tax:taksacja(db, adr), natDic,
     szac:bezpiecznie(() => szacunki(db), []), kontr:bezpiecznie(() => kontrole(db, Object.values(poz)), {})};
 }
-// szacunki brakarskie (pomysł kolegi z Rudnicy, 16.10): ac_lok = szacunek na wydzieleniu (adres, rok, czynność, typ),
+// szacunki brakarskie (pomysł kolegi, 16.10): ac_lok = szacunek na wydzieleniu (adres, rok, czynność, typ),
 // ac_opispow = opis (pow_man w arach, nr raptularza, daty, uwaga), ac_masy2 = masa m³ wg gatunku, sortymentu i klasy grubości,
 // ac_swsp → ac_skl = pomiar drzew z raptularza (stopień grubości, liczba drzew w klasach, wysokości) — w paczce tylko dla części szacunków
 function szacunki(db){
@@ -577,7 +577,7 @@ function opisWydz(k){
 }
 // uwaga z kontroli bez powtórzonego numeru protokołu („PKT 12” = sam numer, to nie uwaga)
 const uwagaKontroli = x => x.uw && x.uw.replace(/^PKT\s*/i, '') !== x.nr ? x.uw : '';
-// rodzaj wpisu w polu uwagi (przejrzane 16.10 na 272 kontrolach Kołczyna): 'ok' = bez uwag / pozytywnie,
+// rodzaj wpisu w polu uwagi (przejrzane 16.10 na kontrolach z paczki): 'ok' = bez uwag / pozytywnie,
 // 'info' = sam znak sprawy NS…, „skontrolowano 12,3 m³ grubizny”; 'uw' = prawdziwa uwaga (zmiana zabiegu, brak oznakowania…)
 const BEZ_UWAG = /bez\s+uwag|brak\s+uwag|pozytywn|zgodne\s+z\s+protok|^\s*ok\b/i;
 function rodzajUwagi(u){
@@ -684,7 +684,7 @@ async function wczytaj(file, zapamietaj){
     for (const f of oddz){ f.k = klucz(f.a.adr_les); if (f.k.startsWith(LESN + '-')){ f.odd = f.k.slice(LESN.length + 1); G.oddz.push(f); G.O.set(f.k, f); } }
     G.les = les.filter(f => klucz(f.a.adr_les) === LESN);
     G.bb = bbox(G.wydz);
-    // punkty graniczne: nr_gran, stab T = zastabilizowany (kamień, słupek), N = bez stabilizacji; klasa i osnowa w paczce Kołczyna puste
+    // punkty graniczne: nr_gran, stab T = zastabilizowany (kamień, słupek), N = bez stabilizacji; klasa i osnowa w paczce bywają puste
     G.gr = grp.filter(f => f.g.t === 'pkt' && f.x > G.bb[0] - 300 && f.x < G.bb[2] + 300 && f.y > G.bb[1] - 300 && f.y < G.bb[3] + 300)
       .map(f => ({x:f.x, y:f.y, nr:S(f.a.nr_gran), stab:S(f.a.stab) === 'T', klasa:f.a.klasa, osnowa:S(f.a.osnowa), wys:D(f.a.wys)}));
     for (const sid in M.szk) M.szk[sid].geo = [];
@@ -1130,7 +1130,7 @@ function tmOd(E, N, U){                                                     // [
   return [fi * 180 / Math.PI, U.l0 + Math.atan2(Math.sinh(eta), Math.cos(xi)) * 180 / Math.PI];
 }
 const doWgs = (x, y) => tmOd(x, y, U1992);
-// skala odwzorowania PL-1992 w danym miejscu (przy Lubniewicach ok. 1,0001): długości dzielimy przez k, pola przez k²,
+// skala odwzorowania PL-1992 w danym miejscu (na zachodzie kraju ok. 1,0001): długości dzielimy przez k, pola przez k²,
 // żeby wynik był „w terenie”, a nie „na mapie”
 function kSkali(x){ const d = (x - U1992.fe) / U1992.k0; return U1992.k0 * (1 + d * d / (2 * 6381000 ** 2)); }
 function dlugR(r, zamk){
