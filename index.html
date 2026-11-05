@@ -939,9 +939,9 @@ function podpisy(){
   gl.style.display = ST.gr && ST.grNr && V.m < .7 ? '' : 'none';
   gl.setAttribute('font-size', (11 * V.m).toFixed(3)); gl.setAttribute('stroke-width', (3 * V.m).toFixed(3));
   gl.setAttribute('transform', `translate(0 ${(-12 * V.m).toFixed(3)})`);
-  // nazwy moich obiektów od tej samej skali co kamienie
+  // nazwy moich obiektów: od skali, w której widać już litery wydzieleń (wcześniej dopiero przy kamieniach — za blisko, 5.11)
   const ml = document.getElementById('l-mojeLab');
-  ml.style.display = ST.moje && V.m < 1.5 ? '' : 'none';
+  ml.style.display = ST.moje && V.m < 4 ? '' : 'none';
   ml.setAttribute('font-size', (12 * V.m).toFixed(3)); ml.setAttribute('stroke-width', (3 * V.m).toFixed(3));
   ml.setAttribute('transform', `translate(0 ${(-15 * V.m).toFixed(3)})`);
   rysujSzkDyn();
@@ -1248,7 +1248,9 @@ function rysujMoje(){
   el.innerHTML = MOJE.filter(o => o.typ === 'pol').map(o => `<path class='mo-c' d='${dSvg(o.pts, 1)}'/><path class='mo-p' d='${dSvg(o.pts, 1)}'/>`).join('') +
     MOJE.filter(o => o.typ === 'lin').map(o => `<path class='mo-c' d='${dSvg(o.pts)}'/><path class='mo-l' d='${dSvg(o.pts)}'/>`).join('') +
     (pkt.length ? `<path class='mo-k' d='${kropki(pkt)}'/><path class='mo-k2' d='${kropki(pkt)}'/>` : '');
-  lb.innerHTML = MOJE.map(o => { const s = srodekMoje(o); return `<text x='${s[0].toFixed(1)}' y='${(-s[1]).toFixed(1)}'>${esc(o.nazwa)}</text>`; }).join('');
+  // napis na mapie: nazwa, a przy powierzchni jeszcze ha, np. „kępa br 0,10 ha” (5.11)
+  const haNapis = o => { if (o.typ !== 'pol') return ''; const a = wynikPomiaru(o.pts, true).pole || 0; return ' ' + fn(a / 1e4, a < 100 ? 3 : 2) + ' ha'; };
+  lb.innerHTML = MOJE.map(o => { const s = srodekMoje(o); return `<text x='${s[0].toFixed(1)}' y='${(-s[1]).toFixed(1)}'>${esc(o.nazwa + haNapis(o))}</text>`; }).join('');
   podpisy();
 }
 function trafMoje(x, y){
