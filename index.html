@@ -48,16 +48,18 @@ button,select,input,textarea{font:inherit;color:inherit}
 .mi-p{fill:#e8590c;fill-opacity:.16;stroke:none}
 .mi-v{fill:none;stroke:#e8590c;stroke-width:13;stroke-linecap:round}
 .mi-v2{fill:none;stroke:#fff;stroke-width:5;stroke-linecap:round}
-.mo-l{fill:none;stroke:#c2410c;stroke-width:2.6}
-.mo-p{fill:#c2410c;fill-opacity:.17;stroke:#c2410c;stroke-width:2.6}
-.mo-k{fill:none;stroke:#c2410c;stroke-width:13;stroke-linecap:round}
-.mo-k2{fill:none;stroke:#fff;stroke-width:5;stroke-linecap:round}
+/* moje obiekty: jaskrawa limonka z ciemną obwódką pod spodem, żeby było je widać i na jasnym podkładzie, i na zabiegach (5.11) */
+.mo-c{fill:none;stroke:#1f3d00;stroke-width:6.5;stroke-linejoin:round;stroke-linecap:round}
+.mo-l{fill:none;stroke:#a6ff00;stroke-width:3.4;stroke-linejoin:round;stroke-linecap:round}
+.mo-p{fill:#a6ff00;fill-opacity:.35;stroke:#a6ff00;stroke-width:3.4;stroke-linejoin:round}
+.mo-k{fill:none;stroke:#1f3d00;stroke-width:17;stroke-linecap:round}
+.mo-k2{fill:none;stroke:#a6ff00;stroke-width:11;stroke-linecap:round}
 .wa-p{fill-opacity:.14;stroke-width:2}
 .wa-l{fill:none;stroke-width:2.4}
 .wa-k{fill:none;stroke-width:11;stroke-linecap:round}
 .wa-k2{fill:none;stroke:#fff;stroke-width:4;stroke-linecap:round}
-.lab-m{fill:#8a2c06;font-weight:600}
-.sz,.w,.oddz,.les,.droga,.ciek,.sel,.gps-k,.gr,.mi-l,.mi-p,.mi-v,.mi-v2,.mo-l,.mo-p,.mo-k,.mo-k2,.wa-p,.wa-l,.wa-k,.wa-k2{vector-effect:non-scaling-stroke}
+.lab-m{fill:#1f4d00;font-weight:700}
+.sz,.w,.oddz,.les,.droga,.ciek,.sel,.gps-k,.gr,.mi-l,.mi-p,.mi-v,.mi-v2,.mo-c,.mo-l,.mo-p,.mo-k,.mo-k2,.wa-p,.wa-l,.wa-k,.wa-k2{vector-effect:non-scaling-stroke}
 .mier{background:var(--card);border:1px solid var(--line);border-left:5px solid #e8590c;border-radius:12px;padding:8px 10px;box-shadow:0 1px 6px rgba(0,0,0,.25)}
 .mier:empty{display:none}
 .mier .wy{font-size:15px;margin:0 0 7px}
@@ -876,7 +878,7 @@ function panelInfo(kom){
     <label class='przel'><input type='checkbox' ${ST.gr ? 'checked' : ''} onchange='ST.gr=this.checked;zapiszUst();podpisy()'> Punkty graniczne (kamienie) <span class='op'>${G.gr.length}</span></label>
     <label class='przel'><input type='checkbox' ${ST.grNr ? 'checked' : ''} onchange='ST.grNr=this.checked;zapiszUst();podpisy()'> Numery punktów po przybliżeniu</label>
     <p class='nota'>Pełna fioletowa kropka = punkt zastabilizowany, kółko = bez stabilizacji. Kropki pojawiają się po przybliżeniu.</p>
-    <div class='wrs'><input type='checkbox' ${ST.moje ? 'checked' : ''} onchange='ST.moje=this.checked;zapiszUst();rysujMoje()' aria-label='Pokaż moje obiekty'><span class='kw' style='background:#c2410c'></span><span class='nz'>Moje punkty i pomiary <span class='op'>${MOJE.length}</span></span><button class='btn' style='font-size:14px;color:inherit' onclick='panelMoje()'>Lista ›</button></div>
+    <div class='wrs'><input type='checkbox' ${ST.moje ? 'checked' : ''} onchange='ST.moje=this.checked;zapiszUst();rysujMoje()' aria-label='Pokaż moje obiekty'><span class='kw' style='background:#a6ff00'></span><span class='nz'>Moje punkty i pomiary <span class='op'>${MOJE.length}</span></span><button class='btn' style='font-size:14px;color:inherit' onclick='panelMoje()'>Lista ›</button></div>
     ${WPLIKI.map(w => `<div class='wrs'><input type='checkbox' ${w.wid ? 'checked' : ''} onchange="wPrzel('${w.id}',this.checked)" aria-label='Pokaż warstwę'><span class='kw' style='background:${w.kol}' onclick="wKolor('${w.id}')" title='Zmień kolor'></span><span class='nz'>${esc(w.nazwa)} <span class='op'>${w.f.length}</span></span><button onclick="wPokaz('${w.id}')" aria-label='Pokaż na mapie'>◎</button><button onclick="wUsun('${w.id}')" aria-label='Usuń warstwę'>🗑</button></div>`).join('')}
     <div style='margin-top:12px'><button class='btn' onclick='dodajWarstwe()'>＋ Dodaj warstwę z pliku</button></div>
     <p class='nota'>ZIP z plikami SHP (+ DBF), KML lub KMZ (Google Earth), GPX (ślady i punkty z innych aplikacji), GeoJSON. Układ WGS84, PL-1992 albo PL-2000 rozpoznaję sam. Warstwa zostaje w tym telefonie. Kolor zmienisz, dotykając kwadracika.</p>
@@ -1239,8 +1241,8 @@ function rysujMoje(){
   const el = document.getElementById('l-moje'), lb = document.getElementById('l-mojeLab'); if (!el) return;
   el.style.display = lb.style.display = ST.moje ? '' : 'none';
   const pkt = MOJE.filter(o => o.typ === 'pkt').map(o => o.pts[0]);
-  el.innerHTML = MOJE.filter(o => o.typ === 'pol').map(o => `<path class='mo-p' d='${dSvg(o.pts, 1)}'/>`).join('') +
-    MOJE.filter(o => o.typ === 'lin').map(o => `<path class='mo-l' d='${dSvg(o.pts)}'/>`).join('') +
+  el.innerHTML = MOJE.filter(o => o.typ === 'pol').map(o => `<path class='mo-c' d='${dSvg(o.pts, 1)}'/><path class='mo-p' d='${dSvg(o.pts, 1)}'/>`).join('') +
+    MOJE.filter(o => o.typ === 'lin').map(o => `<path class='mo-c' d='${dSvg(o.pts)}'/><path class='mo-l' d='${dSvg(o.pts)}'/>`).join('') +
     (pkt.length ? `<path class='mo-k' d='${kropki(pkt)}'/><path class='mo-k2' d='${kropki(pkt)}'/>` : '');
   lb.innerHTML = MOJE.map(o => { const s = srodekMoje(o); return `<text x='${s[0].toFixed(1)}' y='${(-s[1]).toFixed(1)}'>${esc(o.nazwa)}</text>`; }).join('');
   podpisy();
@@ -1299,7 +1301,7 @@ function eksportMoje(fmt){
       : `<Polygon><outerBoundaryIs><LinearRing><coordinates>${c([...o.pts, o.pts[0]])}</coordinates></LinearRing></outerBoundaryIs></Polygon>`;
       const p = pr(o), opis = [o.opis, p.pole_ha != null ? fn(p.pole_ha, 4) + ' ha' : '', p.dlugosc_m != null ? fn(p.dlugosc_m, 1) + ' m' : ''].filter(Boolean).join(' · ');
       return `<Placemark><name>${esc(o.nazwa)}</name><description>${esc(opis)}</description><styleUrl>#m</styleUrl>${g}</Placemark>`; }).join('\n');
-    pobierz(`<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>Moje punkty ${dzis()}</name><Style id="m"><LineStyle><color>ff0c41c2</color><width>3</width></LineStyle><PolyStyle><color>440c41c2</color></PolyStyle></Style>\n${pm}\n</Document></kml>`,
+    pobierz(`<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>Moje punkty ${dzis()}</name><Style id="m"><LineStyle><color>ff00ffa6</color><width>3</width></LineStyle><PolyStyle><color>5900ffa6</color></PolyStyle></Style>\n${pm}\n</Document></kml>`,
       `moje-punkty-${dzis()}.kml`, 'application/vnd.google-earth.kml+xml');
   }
 }
