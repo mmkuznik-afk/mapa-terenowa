@@ -1023,8 +1023,10 @@ function dotkniecie(px, py){
   let [x, y] = swiat(px, py);
   const kam = najblizszyKamien(x, y);
   if (MI.on){ if (kam){ x = kam.x; y = kam.y; } MI.pts.push([x, y]); rysujMier(); return; }
-  if (kam){ otworzPunkt(kam); return; }
-  const o = trafMoje(x, y); if (o){ otworzMoje(o.id); return; }
+  // mój punkt bliżej niż kamień (albo postawiony na kamieniu przez przyciąganie) wygrywa — inaczej nie dało się go otworzyć ani usunąć (5.11)
+  const o = trafMoje(x, y), oBliz = o && o.typ === 'pkt' && (!kam || Math.hypot(o.pts[0][0] - x, o.pts[0][1] - y) <= Math.hypot(kam.x - x, kam.y - y));
+  if (kam && !oBliz){ otworzPunkt(kam); return; }
+  if (o){ otworzMoje(o.id); return; }
   const t = trafWarstwy(x, y); if (t){ otworzObiektW(t.w, t.f, x, y); return; }
   const sz = trafSzk(x, y); if (sz){ otworzSzk(sz.s, sz.f, x, y); return; }
   const f = wydzW(x, y);
@@ -1223,8 +1225,7 @@ async function mierzZapiszOk(typ){
   const nz = (document.getElementById('zNazwa').value || '').trim() || TYP_N[typ], op = (document.getElementById('zOpis').value || '').trim();
   const acc = Math.max(0, ...MI.pts.map(q => q[2] || 0));
   const o = {id:Date.now().toString(36), typ, nazwa:nz, opis:op, pts:MI.pts.map(q => [+q[0].toFixed(2), +q[1].toFixed(2)]), acc:acc >= 1 ? Math.round(acc) : 0, data:new Date().toISOString()};
-  MOJE.push(o);
-  try { await zapiszMoje(); } catch (e) { alert('Nie udało się zapisać: ' + (e && e.message || e)); }
+  try { await zmienMoje(() => MOJE.push(o)); } catch (e) { alert('Nie udało się zapisać: ' + (e && e.message || e)); }
   MI.on = true; mierzPrzelacz();
   ST.moje = true; zapiszUst(); rysujMoje(); otworzMoje(o.id);
 }
@@ -1232,6 +1233,9 @@ async function mierzZapiszOk(typ){
 // ---- moje punkty, linie i powierzchnie (IndexedDB 'moje') ---------------------------------------------------------
 let MOJE = [], WYBM = null;
 async function zapiszMoje(){ try { if (navigator.storage && navigator.storage.persist) await navigator.storage.persist(); } catch (e) {} await idbPut('moje', MOJE); }
+// każda zmiana na świeżym odczycie z IndexedDB: przy dwóch oknach mapy (aplikacja + karta Chrome, okno wznowione z tła)
+// starsza lista z drugiego okna nadpisywała usunięcia i usunięte obiekty wracały (5.11)
+async function zmienMoje(fn){ try { MOJE = await idbGet('moje') || []; } catch (e) {} fn(); await zapiszMoje(); }
 function srodekMoje(o){
   if (o.typ === 'pkt') return o.pts[0];
   if (o.typ === 'lin') return o.pts[Math.floor((o.pts.length - 1) / 2)];
@@ -1264,6 +1268,7 @@ function otworzMoje(id){
 function rysujMojeKarte(){
   const o = MOJE.find(q => q.id === WYBM); if (!o) return;
   const p0 = o.pts[0], w = wynikPomiaru(o.pts, o.typ === 'pol'), f = wydzW(...srodekMoje(o));
+  const kam = o.typ === 'pkt' ? G.gr.find(p => Math.hypot(p.x - p0[0], p.y - p0[1]) < .05) : null;   // punkt postawiony na kamieniu
   const kv = o.typ === 'pkt'
     ? `<span>Od Ciebie</span><span>${odCiebie(p0[0], p0[1])}</span><span>X (północ)</span><span>${fn(p0[1], 2)}</span><span>Y (wschód)</span><span>${fn(p0[0], 2)}</span><span>WGS84</span><span>${fWgs(p0[0], p0[1])}</span>`
     : o.typ === 'pol' ? `<span>Pole</span><span><b>${fHa(w.pole)}</b></span><span>Obwód</span><span>${fM(w.obw)}</span><span>Wierzchołki</span><span>${o.pts.length}</span>`
@@ -1274,11 +1279,12 @@ function rysujMojeKarte(){
     ${o.acc ? `<p class='nota'>Zmierzone z GPS ±${o.acc} m: wynik przybliżony.</p>` : ''}
     <div style='margin-top:14px;display:flex;gap:8px;flex-wrap:wrap'><button class='btn' onclick="pokazNaMapie(bbR([plaski(MOJE.find(q=>q.id==='${o.id}').pts)]))">◎ Pokaż na mapie</button>
     ${f ? `<button class='btn' onclick="otworzKarte('${esc(f.k)}')">Karta ${esc(krotki(f.k))}</button>` : ''}
+    ${kam ? `<button class='btn' onclick="otworzPunkt(G.gr[${G.gr.indexOf(kam)}])">Kamień ${esc(kam.nr)}</button>` : ''}
     <button class='btn' onclick="usunMoje('${o.id}')">🗑 Usuń</button></div>`);
 }
 async function usunMoje(id){
   const o = MOJE.find(q => q.id === id); if (!o || !confirm(`Usunąć „${o.nazwa}”?`)) return;
-  MOJE = MOJE.filter(q => q.id !== id); await zapiszMoje(); rysujMoje(); zamknijArk();
+  await zmienMoje(() => { MOJE = MOJE.filter(q => q.id !== id); }); rysujMoje(); zamknijArk();
 }
 function panelMoje(){
   const lista = MOJE.slice().reverse().map(o => {
@@ -1643,6 +1649,12 @@ async function importuj(pliki){
 
 // ---- tryb offline: na stronie https pliki strony zostają w telefonie (sw.js); paczka i tak jest tylko lokalna ----
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(e => console.warn('sw', e));
+
+// po powrocie do okna (z innej aplikacji albo drugiego okna mapy) moje obiekty czytane od nowa
+document.addEventListener('visibilitychange', async () => {
+  if (document.visibilityState !== 'visible' || !G) return;
+  try { MOJE = await idbGet('moje') || []; rysujMoje(); if (ARK === 'moje') panelMoje(); } catch (e) {}
+});
 
 // ---- start: ostatnia paczka z pamięci telefonu, a jak jej nie ma — ekran wyboru ----------------------
 (async () => {
