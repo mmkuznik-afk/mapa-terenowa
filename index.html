@@ -59,7 +59,16 @@ button,select,input,textarea{font:inherit;color:inherit}
 .wa-k{fill:none;stroke-width:11;stroke-linecap:round}
 .wa-k2{fill:none;stroke:#fff;stroke-width:4;stroke-linecap:round}
 .lab-m{fill:#1f4d00;font-weight:700}
-.sz,.w,.oddz,.les,.droga,.ciek,.sel,.gps-k,.gr,.mi-l,.mi-p,.mi-v,.mi-v2,.mo-c,.mo-l,.mo-p,.mo-k,.mo-k2,.wa-p,.wa-l,.wa-k,.wa-k2{vector-effect:non-scaling-stroke}
+/* warstwy z paczki (5.11): siedliska pod wydzieleniami, ochrona nad nimi, drogi z białą obwódką */
+.pz-s{fill-opacity:.62;stroke:#fff;stroke-width:.5}
+.pz-o{fill-opacity:.16;stroke-width:2;stroke-dasharray:7 4}
+.pz-o.pz-op{fill-opacity:.2;stroke-dasharray:none;stroke-width:2.4}
+.pz-dc{fill:none;stroke:#fff;stroke-width:5.6;stroke-linecap:round;stroke-linejoin:round}
+.pz-d{fill:none;stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
+.pz-dp{fill:none;stroke-width:4;stroke-linecap:round;stroke-linejoin:round}
+.pz-pp{fill:none;stroke:#d32f2f;stroke-width:1.6;stroke-dasharray:5 4}
+.pz-k{fill:none;stroke-linecap:square}
+.pz-s,.pz-o,.pz-dc,.pz-d,.pz-dp,.pz-pp,.pz-k,.sz,.w,.oddz,.les,.droga,.ciek,.sel,.gps-k,.gr,.mi-l,.mi-p,.mi-v,.mi-v2,.mo-c,.mo-l,.mo-p,.mo-k,.mo-k2,.wa-p,.wa-l,.wa-k,.wa-k2{vector-effect:non-scaling-stroke}
 .mier{background:var(--card);border:1px solid var(--line);border-left:5px solid #e8590c;border-radius:12px;padding:8px 10px;box-shadow:0 1px 6px rgba(0,0,0,.25)}
 .mier:empty{display:none}
 .mier .wy{font-size:15px;margin:0 0 7px}
@@ -622,11 +631,11 @@ function szacHtml(s){
 // ---- mapa terenowa (2026-11-03): reszta pisana od nowa pod telefon --------------------------
 let M = null, G = null;
 const V = {cx:0, cy:0, m:5};          // środek widoku (PL-1992) i metry na piksel ekranu
-const ST = {rok:0, cz:new Map(), status:'all', kontrRok:0, gr:true, grNr:true, moje:true, zew:false, szk:new Set()};
+const ST = {rok:0, cz:new Map(), status:'all', kontrRok:0, gr:true, grNr:true, moje:true, zew:false, szk:new Set(), pz:new Set()};
 const GPS = {id:null, sledz:false, p:null, k:null};
 let KARTA = null, ARK = '';
 const LS = 'mapaTeren.v1';
-function zapiszUst(){ try { localStorage.setItem(LS, JSON.stringify({rok:ST.rok, cz:[...ST.cz.keys()], status:ST.status, gr:ST.gr, grNr:ST.grNr, moje:ST.moje, zew:ST.zew, szk:[...ST.szk]})); } catch (e) {} }
+function zapiszUst(){ try { localStorage.setItem(LS, JSON.stringify({rok:ST.rok, cz:[...ST.cz.keys()], status:ST.status, gr:ST.gr, grNr:ST.grNr, moje:ST.moje, zew:ST.zew, szk:[...ST.szk], pz:[...ST.pz]})); } catch (e) {} }
 function wczytajUst(){ try { return JSON.parse(localStorage.getItem(LS) || 'null'); } catch (e) { return null; } }
 function kolorCz(cz){ return PALETA[ST.cz.get(cz) % PALETA.length]; }
 
@@ -674,7 +683,8 @@ async function wczytaj(file, zapamietaj){
       const g = czytajShp(sh), a = czytajDbf(db);
       return przygotuj(g.map((x, i) => ({g:x, a:a[i] || {}})).filter(f => f.g && !f.a._usun && !(f.g.rings && !f.g.rings.length)));   // puste szkice z mLasa (5.11) wywracały wczytanie
     };
-    const [wydz, oddz, les, drogi, cieki, grp, szPol, szLin, szPkt, szPnsw] = await Promise.all(['wydz_pol', 'oddz_pol', 'les_pol', 'kom_lin', 'ciek_lin', 'gr_pkt', 'szkic_pol', 'szkic_lin', 'szkic_pkt', 'szkic_pnsw'].map(L));
+    const [wydz, oddz, les, drogi, cieki, grp, szPol, szLin, szPkt, szPnsw, pSied, pOcp, pOprz, pDroga, pPpoz, pInfra] = await Promise.all(['wydz_pol', 'oddz_pol', 'les_pol', 'kom_lin', 'ciek_lin', 'gr_pkt', 'szkic_pol', 'szkic_lin', 'szkic_pkt', 'szkic_pnsw',
+      'sied_pol', 'ocp_pol', 'oprz_pol', 'g_droga', 'komp_lin', 'g_obinfr'].map(L));
     if (!wydz.length) throw new Error('W paczce nie ma warstwy wydzieleń (wydz_pol). Potrzebny pełny ZIP z mLasa.');
     G = {wydz:[], oddz:[], les, drogi, cieki, W:new Map(), O:new Map()};
     for (const f of wydz){
@@ -684,6 +694,10 @@ async function wczytaj(file, zapamietaj){
     for (const f of oddz){ f.k = klucz(f.a.adr_les); if (f.k.startsWith(LESN + '-')){ f.odd = f.k.slice(LESN.length + 1); G.oddz.push(f); G.O.set(f.k, f); } }
     G.les = les.filter(f => klucz(f.a.adr_les) === LESN);
     G.bb = bbox(G.wydz);
+    // warstwy z paczki do włączania w ☰ (5.11); pk = skąd obiekt, do karty i kolorów
+    const tag = (l, pk, t) => l.filter(f => f.g.t === t && f.bb[2] >= G.bb[0] && f.bb[0] <= G.bb[2] && f.bb[3] >= G.bb[1] && f.bb[1] <= G.bb[3]).map(f => (f.pk = pk, f));
+    G.pz = {sied:tag(pSied, 'sied', 'pol'), ochr:[...tag(pOprz, 'oprz', 'pol'), ...tag(pOcp, 'ocp', 'pol')], drogi:tag(pDroga, 'droga', 'lin'),
+      ppoz:tag(pPpoz, 'ppoz', 'lin'), infra:tag(pInfra, 'infra', 'pkt').filter(f => INFRA[T(f.a.kod_ob)])};
     // punkty graniczne: nr_gran, stab T = zastabilizowany (kamień, słupek), N = bez stabilizacji; klasa i osnowa w paczce bywają puste
     G.gr = grp.filter(f => f.g.t === 'pkt' && f.x > G.bb[0] - 300 && f.x < G.bb[2] + 300 && f.y > G.bb[1] - 300 && f.y < G.bb[3] + 300)
       .map(f => ({x:f.x, y:f.y, nr:S(f.a.nr_gran), stab:S(f.a.stab) === 'T', klasa:f.a.klasa, osnowa:S(f.a.osnowa), wys:D(f.a.wys)}));
@@ -705,6 +719,7 @@ async function wczytaj(file, zapamietaj){
     if (u && typeof u.moje === 'boolean') ST.moje = u.moje;
     if (u && typeof u.zew === 'boolean') ST.zew = u.zew;
     ST.szk = new Set((u && Array.isArray(u.szk) ? u.szk : []).filter(id => M.szk[id]));
+    ST.pz = new Set((u && Array.isArray(u.pz) ? u.pz : []).filter(id => PACZ.some(p => p.id === id)));
     ST.cz.clear();
     if (u && Array.isArray(u.cz)) u.cz.forEach((c, i) => ST.cz.set(c, i));
     budujUklad();
@@ -729,8 +744,8 @@ function budujUklad(){
   document.getElementById('app').innerHTML = `
   <div id='mapa'><svg id='svg' xmlns='http://www.w3.org/2000/svg' preserveAspectRatio='xMidYMid meet'>
     <defs><clipPath id='granica'>${G.les.map(f => `<path d='${f.d}'/>`).join('')}</clipPath></defs>
-    <g id='l-wydz'></g><g id='l-szkP'></g><g id='l-cieki' clip-path='url(#granica)'></g><g id='l-drogi' clip-path='url(#granica)'></g>
-    <g id='l-oddz'></g><g id='l-les'></g><g id='l-szkL'></g><g id='l-war'></g><g id='l-sel'></g><g id='l-szkD'></g><g id='l-gr'></g><g id='l-moje'></g><g id='l-wyb'></g><g id='l-mier'></g>
+    <g id='l-pzS' clip-path='url(#granica)'></g><g id='l-wydz'></g><g id='l-pzO' clip-path='url(#granica)'></g><g id='l-szkP'></g><g id='l-cieki' clip-path='url(#granica)'></g><g id='l-drogi' clip-path='url(#granica)'></g><g id='l-pzD' clip-path='url(#granica)'></g>
+    <g id='l-oddz'></g><g id='l-les'></g><g id='l-szkL'></g><g id='l-war'></g><g id='l-sel'></g><g id='l-szkD'></g><g id='l-pzI'></g><g id='l-gr'></g><g id='l-moje'></g><g id='l-wyb'></g><g id='l-mier'></g>
     <g id='l-labW' class='lab'></g><g id='l-grLab' class='lab lab-g'></g><g id='l-mojeLab' class='lab lab-m'></g><g id='l-labO' class='lab lab-o'></g><g id='l-gps'></g>
   </svg></div>
   <div class='gora'>
@@ -747,7 +762,7 @@ function budujUklad(){
   <div class='dol'><div id='mier' class='mier'></div><div id='gdzie' class='gdzie' onclick='if(GPS.k)otworzKarte(GPS.k)'></div><div id='leg' class='leg'></div></div>
   <div id='ark' class='ark'><div class='uchwyt' onclick='zamknijArk()'></div><button class='x' onclick='zamknijArk()' aria-label='Zamknij'>×</button><div id='arkT'></div></div>`;
   rysujPodklad();
-  rysujWarstwy(); rysujMoje(); rysujMier(); rysujSzk();
+  rysujPacz(); rysujWarstwy(); rysujMoje(); rysujMier(); rysujSzk();
   koloruj();
   podepnijMape();
   dopasuj(G.bb);
@@ -805,7 +820,7 @@ function legenda(wyb){
     ? cz.map(c => `<span class='k'><span class='kw' style='background:${kolorCz(c)}'></span><b>${esc(c)}</b> ${ile[c]}</span>`).join('') +
       `<span class='op'>· pełny = wykonane, blady = do wykonania${pozaMapa ? ` · ${pozaMapa} poz. na całe oddziały/leśnictwo` : ''}</span>`
     : `<span class='op'>${ST.cz.size ? 'W ' + ST.rok + ' brak wybranych zabiegów.' : 'Dotknij „Zabiegi”, żeby pokolorować mapę.'}</span>`;
-  el.innerHTML += legSzk();
+  el.innerHTML += legSzk() + legPacz();
 }
 function ustawRok(r){ ST.rok = r; const s = document.getElementById('rok'); if (s) s.value = r; koloruj(); zapiszUst(); if (ARK === 'zab') panelZabiegi(); if (ARK === 'karta') rysujKarte(); }
 function rokKrok(d){ const i = M.lata.indexOf(ST.rok) + d; if (i >= 0 && i < M.lata.length) ustawRok(M.lata[i]); }
@@ -878,6 +893,9 @@ function panelInfo(kom){
     <label class='przel'><input type='checkbox' ${ST.gr ? 'checked' : ''} onchange='ST.gr=this.checked;zapiszUst();podpisy()'> Punkty graniczne (kamienie) <span class='op'>${G.gr.length}</span></label>
     <label class='przel'><input type='checkbox' ${ST.grNr ? 'checked' : ''} onchange='ST.grNr=this.checked;zapiszUst();podpisy()'> Numery punktów po przybliżeniu</label>
     <p class='nota'>Pełna fioletowa kropka = punkt zastabilizowany, kółko = bez stabilizacji. Kropki pojawiają się po przybliżeniu.</p>
+    ${PACZ.map(p => { const n = p.id === 'drogi' ? G.pz.drogi.length + G.pz.ppoz.length + G.pz.infra.length : G.pz[p.id].length;
+      return `<label class='przel'><input type='checkbox' ${ST.pz.has(p.id) ? 'checked' : ''} ${n ? '' : 'disabled'} onchange="pzPrzel('${p.id}',this.checked)"> ${p.nazwa} <span class='op'>${n ? n + ' ' + obiektow(n) : 'brak w paczce'}</span></label>`; }).join('')}
+    <p class='nota'>Siedliska, ochrona przyrody i drogi z Leśnej Mapy Numerycznej w paczce. Dotknięcie mapy pokazuje, co leży w tym miejscu.</p>
     <div class='wrs'><input type='checkbox' ${ST.moje ? 'checked' : ''} onchange='ST.moje=this.checked;zapiszUst();rysujMoje()' aria-label='Pokaż moje obiekty'><span class='kw' style='background:#a6ff00'></span><span class='nz'>Moje punkty i pomiary <span class='op'>${MOJE.length}</span></span><button class='btn' style='font-size:14px;color:inherit' onclick='panelMoje()'>Lista ›</button></div>
     ${WPLIKI.map(w => `<div class='wrs'><input type='checkbox' ${w.wid ? 'checked' : ''} onchange="wPrzel('${w.id}',this.checked)" aria-label='Pokaż warstwę'><span class='kw' style='background:${w.kol}' onclick="wKolor('${w.id}')" title='Zmień kolor'></span><span class='nz'>${esc(w.nazwa)} <span class='op'>${w.f.length}</span></span><button onclick="wPokaz('${w.id}')" aria-label='Pokaż na mapie'>◎</button><button onclick="wUsun('${w.id}')" aria-label='Usuń warstwę'>🗑</button></div>`).join('')}
     <div style='margin-top:12px'><button class='btn' onclick='dodajWarstwe()'>＋ Dodaj warstwę z pliku</button></div>
@@ -944,6 +962,7 @@ function podpisy(){
   ml.style.display = ST.moje && V.m < 4 ? '' : 'none';
   ml.setAttribute('font-size', (12 * V.m).toFixed(3)); ml.setAttribute('stroke-width', (3 * V.m).toFixed(3));
   ml.setAttribute('transform', `translate(0 ${(-15 * V.m).toFixed(3)})`);
+  const pzi = document.getElementById('l-pzI'); if (pzi) pzi.style.display = V.m < 4 ? '' : 'none';   // składnice i mijanki po przybliżeniu
   rysujSzkDyn();
 }
 const ogr = m => Math.min(60, Math.max(.08, m));
@@ -1022,13 +1041,14 @@ function najblizszyKamien(x, y){
 function dotkniecie(px, py){
   let [x, y] = swiat(px, py);
   const kam = najblizszyKamien(x, y);
-  if (MI.on){ if (kam){ x = kam.x; y = kam.y; } MI.pts.push([x, y]); rysujMier(); return; }
+  if (MI.on){ if (MI.slad) return; if (kam){ x = kam.x; y = kam.y; } MI.pts.push([x, y]); rysujMier(); return; }   // w trakcie śladu dotknięcia nie dokładają punktów
   // mój punkt bliżej niż kamień (albo postawiony na kamieniu przez przyciąganie) wygrywa — inaczej nie dało się go otworzyć ani usunąć (5.11)
   const o = trafMoje(x, y), oBliz = o && o.typ === 'pkt' && (!kam || Math.hypot(o.pts[0][0] - x, o.pts[0][1] - y) <= Math.hypot(kam.x - x, kam.y - y));
   if (kam && !oBliz){ otworzPunkt(kam); return; }
   if (o){ otworzMoje(o.id); return; }
   const t = trafWarstwy(x, y); if (t){ otworzObiektW(t.w, t.f, x, y); return; }
   const sz = trafSzk(x, y); if (sz){ otworzSzk(sz.s, sz.f, x, y); return; }
+  const pz = trafPacz(x, y); if (pz){ otworzPacz(pz, x, y); return; }
   const f = wydzW(x, y);
   if (f) otworzKarte(f.k); else zamknijArk();
 }
@@ -1065,6 +1085,7 @@ function gpsPrzelacz(){
   if (!window.isSecureContext){ pokazGdzie(`⚠ Chrome nie daje GPS stronie otwartej z „Moich plików” (adres ${location.protocol}). Trzeba ją otworzyć inaczej.`, true); return; }
   if (GPS.id != null && GPS.sledz){
     navigator.geolocation.clearWatch(GPS.id); GPS.id = null; GPS.sledz = false; GPS.p = null; GPS.k = null;
+    if (MI.slad){ MI.slad = false; rysujMier(); }
     puscEkran(); rysujGps(); pokazGdzie(''); odswiezGpsBtn(); return;
   }
   GPS.sledz = true;
@@ -1097,6 +1118,7 @@ function nowaPozycja(pos){
   if (ARK === 'punkt') rysujPunkt();
   if (ARK === 'mojeK') rysujMojeKarte();
   if (ARK === 'obW' && OBW && OBW.f.t === 'pkt') rysujObiektW();
+  if (MI.on && MI.slad) sladPunkt();
 }
 function bladGps(e){
   const t = {1:'Brak zgody na lokalizację. Zezwól przeglądarce na lokalizację (ikona kłódki przy adresie albo ustawienia witryny).',
@@ -1172,9 +1194,9 @@ const obiektow = n => n === 1 ? 'obiekt' : n % 10 >= 2 && n % 10 <= 4 && (n % 10
 const dzis = () => new Date().toISOString().slice(0, 10);
 
 // ---- pomiar 📏: dotknięcia stawiają wierzchołki, „tu stoję” dokłada pozycję z GPS ------------------------------------
-const MI = {on:false, pts:[], pole:true};
+const MI = {on:false, pts:[], pole:true, slad:false, odrz:0};
 function mierzPrzelacz(){
-  MI.on = !MI.on; MI.pts = [];
+  MI.on = !MI.on; MI.pts = []; MI.slad = false; MI.odrz = 0;
   if (MI.on) zamknijArk();
   const b = document.getElementById('bMier'); if (b) b.classList.toggle('on', MI.on);
   rysujMier();
@@ -1186,6 +1208,22 @@ function mierzGps(){
   }
   MI.pts.push([GPS.p.x, GPS.p.y, accPom()]); rysujMier();
 }
+// ślad (5.11): obchodzisz teren, a kolejne pozycje GPS same dokładają wierzchołki — co ok. 3–8 m (zależnie od ±),
+// z odbiornikiem RTK co 0,5 m; pozycje gorsze niż ±20 m pomijane. Pauza i wznowienie dokładają do tego samego pomiaru.
+function sladPrzelacz(){
+  MI.slad = !MI.slad;
+  if (MI.slad){
+    if (GPS.id == null) gpsPrzelacz(); else { GPS.sledz = true; odswiezGpsBtn(); }
+    if (GPS.p) sladPunkt();
+  }
+  rysujMier();
+}
+function sladPunkt(){
+  const p = GPS.p; if (!p) return;
+  if (!ST.zew && p.acc > 20){ MI.odrz++; rysujMier(); return; }
+  const o = MI.pts[MI.pts.length - 1], prog = ST.zew ? .5 : Math.max(3, Math.min(p.acc, 8));
+  if (!o || Math.hypot(p.x - o[0], p.y - o[1]) >= prog){ MI.pts.push([p.x, p.y, accPom()]); rysujMier(); }
+}
 function wynikPomiaru(pts, jakoPole){
   const n = pts.length, r = plaski(pts);
   if (n < 2) return {};
@@ -1196,17 +1234,19 @@ function rysujMier(){
   if (!MI.on){ el.innerHTML = ''; bar.innerHTML = ''; return; }
   const p = MI.pts, n = p.length, zamk = MI.pole && n >= 3;
   el.innerHTML = (zamk ? `<path class='mi-p' d='${dSvg(p, 1)}'/>` : '') + (n > 1 ? `<path class='mi-l' d='${dSvg(p, zamk)}'/>` : '') +
-    (n ? `<path class='mi-v' d='${kropki(p)}'/><path class='mi-v2' d='${kropki(p)}'/>` : '');
+    (n ? `<path class='mi-v' d='${kropki(n > 40 ? [p[0], p[n - 1]] : p)}'/><path class='mi-v2' d='${kropki(n > 40 ? [p[0], p[n - 1]] : p)}'/>` : '');   // długi ślad: kółka tylko na początku i końcu
   const w = wynikPomiaru(p, MI.pole), acc = Math.max(0, ...p.map(q => q[2] || 0));
   let t;
-  if (!n) t = 'Dotykaj mapy, żeby stawiać punkty, albo „＋📍 tu stoję” w każdym narożniku.';
+  if (!n) t = MI.slad ? 'Czekam na pozycję GPS…' : 'Dotykaj mapy, żeby stawiać punkty, dawaj „＋📍 tu stoję” w każdym narożniku albo włącz „🚶 ślad” i obejdź teren.';
   else if (n === 1) t = '1 punkt · dodaj następny';
   else if (w.pole != null) t = `Pole <b>${fHa(w.pole)}</b> · obwód ${fM(w.obw)}`;
   else t = `Długość <b>${fM(w.dl)}</b>${MI.pole ? ' · 3. punkt da pole' : ''}`;
+  if (MI.slad) t = `<b style='color:#e8590c'>● Nagrywam ślad</b> · ${n} pkt<br>` + t + `<br><span class='op'>Idź po granicy. Ekran zostaw włączony, bo przy wygaszonym telefon gubi GPS.${MI.odrz ? ` Pominięte słabe pozycje: ${MI.odrz}.` : ''}</span>`;
   if (acc >= 1) t += `<br><span class='op'>Punkty z GPS ±${fn(Math.round(acc))} m: wynik przybliżony.</span>`;
   bar.innerHTML = `<div class='wy'>📏 ${t}</div><div class='rz'>
     <button class='${MI.pole ? '' : 'on'}' onclick='MI.pole=false;rysujMier()'>Linia</button><button class='${MI.pole ? 'on' : ''}' onclick='MI.pole=true;rysujMier()'>Pole</button>
-    <button onclick='mierzGps()'>＋📍 tu stoję</button>
+    <button class='${MI.slad ? 'on' : ''}' onclick='sladPrzelacz()'>${MI.slad ? '⏸ pauza' : n && !MI.slad && MI.pts.some(q => q.length > 2) ? '🚶 dalej' : '🚶 ślad'}</button>
+    ${MI.slad ? '' : `<button onclick='mierzGps()'>＋📍 tu stoję</button>`}
     <button onclick='MI.pts.pop();rysujMier()' ${n ? '' : 'disabled'} aria-label='Cofnij punkt'>↶</button>
     <button onclick='mierzZapisz()' ${n ? '' : 'disabled'}>Zapisz</button>
     <button onclick='mierzPrzelacz()' aria-label='Zakończ pomiar'>✕</button></div>`;
@@ -1444,6 +1484,117 @@ function panelSzkice(){
 function przelSzk(id){ ST.szk.has(id) ? ST.szk.delete(id) : ST.szk.add(id); zapiszUst(); rysujSzk(); }
 function szkWszystkie(r){ ST.szk.clear(); if (r) for (const s of Object.values(M.szk)) if (s.rodz === r && s.geo.length) ST.szk.add(s.id); zapiszUst(); rysujSzk(); panelSzkice(); }
 function pokazSzk(id){ const s = M.szk[id]; if (!s || !s.geo.length) return; if (!ST.szk.has(id)){ ST.szk.add(id); zapiszUst(); rysujSzk(); } zamknijArk(); GPS.sledz = false; odswiezGpsBtn(); dopasuj(bbox(s.geo), 1.3); }
+
+// ---- warstwy z paczki (5.11): siedliska, ochrona przyrody, drogi — pliki SHP Leśnej Mapy Numerycznej z folderu leśnictwa ----
+// włączane w ☰; dotknięcie pokazuje wszystko, co leży w tym miejscu, z przyciskiem do karty wydzielenia
+const PACZ = [{id:'sied', nazwa:'Siedliska'}, {id:'ochr', nazwa:'Ochrona przyrody'}, {id:'drogi', nazwa:'Drogi i składnice'}];
+// typ siedliskowy lasu: skrót, nazwa, kolor (od jasnych borów przez bory mieszane i lasy mieszane do olsów)
+const TSL = {BS:['Bs', 'bór suchy', '#fff4b8'], BSW:['Bśw', 'bór świeży', '#ffe27a'], BW:['Bw', 'bór wilgotny', '#d9c77a'], BB:['Bb', 'bór bagienny', '#b5a77f'],
+  BMSW:['BMśw', 'bór mieszany świeży', '#f5b46a'], BMW:['BMw', 'bór mieszany wilgotny', '#d99a5a'], BMB:['BMb', 'bór mieszany bagienny', '#b88a66'],
+  LMSW:['LMśw', 'las mieszany świeży', '#b5dc78'], LMW:['LMw', 'las mieszany wilgotny', '#8cc46e'], LMB:['LMb', 'las mieszany bagienny', '#76a874'],
+  LSW:['Lśw', 'las świeży', '#5fb35a'], LW:['Lw', 'las wilgotny', '#3f9a55'], LL:['Lł', 'las łęgowy', '#6cc6a6'], OL:['Ol', 'ols', '#6aa3d8'], OLJ:['OlJ', 'ols jesionowy', '#4d86c8']};
+const T = v => S(v).replace(/\0/g, '').trim();   // puste pola DBF w tych warstwach bywają wypełnione znakami zerowymi
+function tsl(v){ const s = T(v), k = s.toUpperCase().replace(/Ś/g, 'S').replace(/Ł/g, 'L').replace(/\s/g, ''); return TSL[k] || [s || '?', s ? 'kod ' + s : 'brak typu', '#c9c9c9']; }
+const DR_STAN = {DOBRY:['dobry', '#2e8b3d'], ZADOW:['zadowalający', '#8ab832'], SREDNI:['średni', '#f0a020'], ZLY:['zły', '#d33a2c']};
+const DR_RODZ = {'L GLOWNA':'leśna główna', 'L BOCZNA':'leśna boczna', 'L DOJAZD':'leśna dojazdowa', 'P KRAJ':'publiczna krajowa', 'P WOJEW':'publiczna wojewódzka',
+  'P POWIAT':'publiczna powiatowa', 'P GMINNA':'publiczna gminna', 'W GMINY':'wewnętrzna gminy', 'W PRYWATNA':'wewnętrzna prywatna'};
+// z obiektów infrastruktury (g_obinfr) tylko te, które przydają się przy wywozie; zbiorniki i rowy odparowujące pomijam
+const INFRA = {'SKLAD DREW':['składnica drewna', '#0d47a1', 13], 'MIJANKA':['mijanka', '#5d4037', 9], 'WJAZD SZLK':['wjazd', '#5d4037', 7], 'WIADUKT':['wiadukt', '#455a64', 9], 'MPP':['MPP', '#455a64', 9]};
+const kolDrogi = f => { const r = T(f.a.rodz_dr); return r.startsWith('P') ? '#5f5f5f' : r.startsWith('W') ? '#9a9a9a' : (DR_STAN[T(f.a.stan)] || [0, '#a58a6c'])[1]; };
+const kolOchr = f => f.pk === 'oprz' ? (T(f.a.kod_ob).endsWith('C') ? '#7b1fa2' : '#ba68c8') : T(f.a.rodzaj_ogr).startsWith('wy') ? '#c62828' : '#ef6c00';
+function pzPrzel(id, on){ if (on) ST.pz.add(id); else ST.pz.delete(id); zapiszUst(); rysujPacz(); legenda(wybrane()); podpisy(); }
+function rysujPacz(){
+  const s = document.getElementById('l-pzS'), o = document.getElementById('l-pzO'), d = document.getElementById('l-pzD'), k = document.getElementById('l-pzI'); if (!s || !G.pz) return;
+  const P = G.pz;
+  s.innerHTML = ST.pz.has('sied') ? P.sied.map(f => `<path class='pz-s' fill-rule='evenodd' style='fill:${tsl(f.a.tsl)[2]}' d='${f.d}'/>`).join('') : '';
+  o.innerHTML = ST.pz.has('ochr') ? P.ochr.map(f => { const c = kolOchr(f); return `<path class='pz-o${f.pk === 'oprz' ? ' pz-op' : ''}' fill-rule='evenodd' style='fill:${c};stroke:${c}' d='${f.d}'/>`; }).join('') : '';
+  if (!ST.pz.has('drogi')){ d.innerHTML = k.innerHTML = ''; return; }
+  const gr = new Map();   // drogi zgrupowane po kolorze: kilkanaście ścieżek zamiast kilkuset
+  for (const f of P.drogi){ const kl = (T(f.a.rodz_dr).startsWith('P') ? 'pz-dp' : 'pz-d') + '|' + kolDrogi(f); gr.set(kl, (gr.get(kl) || '') + f.d); }
+  const wsz = [...gr.values()].join('');
+  d.innerHTML = (wsz ? `<path class='pz-dc' d='${wsz}'/>` : '') + [...gr].map(([kl, dd]) => { const [c, kol] = kl.split('|'); return `<path class='${c}' style='stroke:${kol}' d='${dd}'/>`; }).join('') +
+    (P.ppoz.length ? `<path class='pz-pp' d='${P.ppoz.map(f => f.d).join('')}'/>` : '');
+  k.innerHTML = P.infra.map(f => { const t = INFRA[T(f.a.kod_ob)]; return `<path class='pz-k' style='stroke:${t[1]};stroke-width:${t[2]}px' d='${kropki([[f.x, f.y]])}'/>`; }).join('');
+}
+function legPacz(){
+  if (!G.pz || !ST.pz.size) return '';
+  const kw = (c, t) => `<span class='k'><span class='kw' style='background:${c}'></span>${t}</span>`, it = [];
+  if (ST.pz.has('sied')){
+    const ile = new Map(); for (const f of G.pz.sied){ const t = tsl(f.a.tsl); ile.set(t[0], [t[2], (ile.get(t[0]) || [0, 0])[1] + 1]); }
+    it.push(`<span style='flex-basis:100%;height:0'></span><b>Siedliska:</b>`, ...[...ile].sort((a, b) => b[1][1] - a[1][1]).map(([n, [c]]) => kw(c, esc(n))));
+  }
+  if (ST.pz.has('ochr')){
+    const jest = new Set(G.pz.ochr.map(kolOchr));
+    it.push(`<span style='flex-basis:100%;height:0'></span><b>Ochrona:</b>`, ...[['#c62828', 'wyłączenie'], ['#ef6c00', 'modyfikacja'], ['#7b1fa2', 'strefa całoroczna'], ['#ba68c8', 'strefa okresowa']].filter(([c]) => jest.has(c)).map(([c, t]) => kw(c, t)));
+  }
+  if (ST.pz.has('drogi')) it.push(`<span style='flex-basis:100%;height:0'></span><b>Drogi:</b>`, ...Object.values(DR_STAN).map(([n, c]) => kw(c, n)), kw('#5f5f5f', 'publiczna'),
+    `<span class='k'><svg width='22' height='12' viewBox='0 0 22 12' style='flex:none'><path d='M1 6H21' stroke='#d32f2f' stroke-width='2' stroke-dasharray='5 4'/></svg>ppoż.</span>`, kw('#0d47a1', 'składnica'));
+  return it.join('');
+}
+function trafPacz(x, y){
+  if (!G.pz || !ST.pz.size) return null;
+  if (!G.les.some(f => pip(f.g.rings, x, y))) return null;   // warstwy przycięte do granicy leśnictwa — poza nią nic nie łapie
+  const tp = 16 * V.m, tl = 10 * V.m, P = G.pz, wBB = (f, t) => x >= f.bb[0] - t && x <= f.bb[2] + t && y >= f.bb[1] - t && y <= f.bb[3] + t;
+  if (ST.pz.has('drogi')){
+    if (V.m < 4){ let b = null, bd = tp; for (const f of P.infra){ const dd = Math.hypot(f.x - x, f.y - y); if (dd < bd){ bd = dd; b = f; } } if (b) return [b]; }
+    // przy skrzyżowaniu kilka odcinków naraz: bez powtórek tej samej drogi, najwyżej 3
+    const lin = [], byl = new Set();
+    for (const f of [...P.ppoz, ...P.drogi]) if (wBB(f, tl) && przyLinii(f.g.rings, x, y, tl, false)){ const k = f.pk + tytPacz(f) + T(f.a.nr_drogi); if (!byl.has(k)){ byl.add(k); lin.push(f); } }
+    if (lin.length) return lin.slice(0, 3);
+  }
+  const out = [];
+  if (ST.pz.has('ochr')) for (const f of P.ochr) if (wBB(f, 0) && pip(f.g.rings, x, y)) out.push(f);
+  if (ST.pz.has('sied')){ const f = P.sied.find(f => wBB(f, 0) && pip(f.g.rings, x, y)); if (f) out.push(f); }
+  return out.length ? out : null;
+}
+function tytPacz(f){
+  const a = f.a;
+  if (f.pk === 'sied') return 'Siedlisko ' + tsl(a.tsl)[0];
+  if (f.pk === 'ocp') return T(a.opis_ogr) || 'Ochrona przyrody';
+  if (f.pk === 'oprz') return 'Strefa ochronna ' + T(a.nazwa);
+  if (f.pk === 'droga'){ const r = T(a.rodz_dr); return 'Droga ' + (DR_RODZ[r] || r); }
+  if (f.pk === 'ppoz') return 'Droga pożarowa' + (T(a.nr_inw) ? ' ' + T(a.nr_inw) : '');
+  const t = INFRA[T(a.kod_ob)]; return t ? t[0][0].toUpperCase() + t[0].slice(1) : T(a.kod_ob);
+}
+function opisPacz(f, zNagl){
+  const a = f.a, r = [], dod = (k, v) => { if (v !== '' && v != null) r.push(`<span>${k}</span><span>${v}</span>`); };
+  const stan = v => { const t = DR_STAN[T(v)]; return t ? `<span class='kw' style='background:${t[1]};vertical-align:-2px'></span> <b>${t[0]}</b>` : esc(T(v).toLowerCase()); };
+  const m = (v, d = 1) => D(v) ? fn(D(v), d) + ' m' : '';
+  if (f.pk === 'sied'){
+    const t = tsl(a.tsl);
+    dod('Typ siedliskowy', `<span class='kw' style='background:${t[2]};vertical-align:-2px'></span> <b>${esc(t[0])}</b> · ${esc(t[1])}`);
+    dod('Grunt porolny', T(a.porol) === 'T' ? '<b>tak</b>' : T(a.porol) === 'N' ? 'nie' : '');
+    dod('Typ gleby', esc(T(a.ptyp_gl))); dod('Gatunek gleby', esc(T(a.gat_gl))); dod('Utwór geologiczny', esc(T(a.utw_geol)));
+    dod('Inne kody', esc([['stan', a.stan], ['st_uw_gl', a.st_uw_gl], ['tsl_m', a.tsl_m]].filter(([, v]) => T(v)).map(([k, v]) => k + ' ' + T(v)).join(' · ')));
+    dod('Pole płatu', fHa(poleRs(f.g.rings)));
+  } else if (f.pk === 'ocp'){
+    dod('Ograniczenie', `<b>${esc(T(a.rodzaj_ogr))}</b>`); dod('Kod', esc(T(a.kod_ogr))); dod('Pole', fHa(poleRs(f.g.rings)));
+  } else if (f.pk === 'oprz'){
+    const k = T(a.kod_ob);
+    dod('Strefa', k.endsWith('C') ? '<b>całoroczna</b> (C)' : k.endsWith('O') ? '<b>okresowa</b> (O)' : esc(k)); dod('Ostoja', esc(T(a.nazwa))); dod('Pole', fHa(poleRs(f.g.rings)));
+  } else if (f.pk === 'droga'){
+    dod('Numer', esc(T(a.nazwa_dr) || T(a.nr_drogi))); dod('Stan', stan(a.stan));
+    dod('Nawierzchnia', esc([a.rodz_naw, a.typ_naw, a.mat_naw].map(v => T(v).toLowerCase()).filter(Boolean).join(', ')));
+    dod('Szerokość jezdni', m(a.szer_j)); dod('Ograniczenie nośności', D(a.wart_ogr) ? `<b>${fn(D(a.wart_ogr), 1)} t</b>` : '');
+    dod('Sieć docelowa', T(a.siec_docel) === 'T' ? 'tak' : T(a.siec_docel) === 'N' ? 'nie' : ''); dod('Długość odcinka', fM(dlugRs(f.g.rings, false)));
+  } else if (f.pk === 'ppoz'){
+    dod('Szerokość', m(a.szer)); dod('Długość odcinka', fM(dlugRs(f.g.rings, false)));
+  } else {
+    dod('Od Ciebie', odCiebie(f.x, f.y)); dod('Stan', stan(a.stan)); dod('Nawierzchnia', esc(T(a.mat_naw).toLowerCase()));
+    dod('Wymiary', D(a.dl) ? fn(D(a.dl)) + ' × ' + m(a.szer) : ''); dod('WGS84', fWgs(f.x, f.y));
+  }
+  return (zNagl ? `<h3>${esc(tytPacz(f))}</h3>` : '') + `<div class='kv'>${r.join('')}</div>`;
+}
+function otworzPacz(l, x, y){
+  KARTA = null; PUNKT = null; WYBM = null; OBW = null; rysujSel();
+  const wyb = document.getElementById('grWyb'); if (wyb) wyb.setAttribute('d', '');
+  const f0 = l[0], pk = f0.g.t === 'pkt';
+  podswietl(pk ? {t:'pkt', p:[f0.x, f0.y]} : {d:f0.d});
+  const fw = wydzW(pk ? f0.x : x, pk ? f0.y : y);
+  otworzArk('pacz', `<h2>${l.length === 1 ? esc(tytPacz(f0)) : 'W tym miejscu'}</h2>${l.map(f => opisPacz(f, l.length > 1)).join('')}
+    ${fw ? `<div style='margin-top:14px'><button class='btn' onclick="otworzKarte('${esc(fw.k)}')">Karta wydzielenia ${esc(krotki(fw.k))}</button></div>` : ''}
+    <p class='nota'>Z Leśnej Mapy Numerycznej w paczce mLasa, stan z dnia paczki. Wyłączysz w ☰.</p>`);
+}
 
 // ---- warstwy z plików (IndexedDB 'warstwy'): obiekt = {t:'pkt'|'lin'|'pol', r:[pierścienie płaskie x,y,...], a:{atrybuty}} ----
 let WPLIKI = [], OBW = null;
