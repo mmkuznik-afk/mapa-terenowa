@@ -115,6 +115,15 @@ button,select,input,textarea{font:inherit;color:inherit}
 .gdzie{background:#1a73e8;color:#fff;border-radius:10px;padding:7px 11px;font-size:14px;font-weight:600;box-shadow:0 1px 6px rgba(0,0,0,.25);cursor:pointer}
 .gdzie:empty{display:none}
 .gdzie.uw{background:#8a4200}
+/* prowadź do (5.11, v19): jedna linijka nad paskiem GPS + przerywana linia na mapie, turkus jak wskaźnik GPS */
+.cel{display:flex;align-items:center;gap:8px;background:#00596b;color:#fff;border-radius:10px;padding:5px 6px 5px 11px;font-size:14px;box-shadow:0 1px 6px rgba(0,0,0,.25);cursor:pointer}
+.cel:empty{display:none}
+.cel .st{display:inline-block;font-size:18px;line-height:1;transition:transform .3s}
+.cel .t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cel button{border:0;background:rgba(255,255,255,.18);color:#fff;border-radius:7px;width:28px;height:28px;font-size:15px;cursor:pointer;flex:none}
+.cel-l{fill:none;stroke:#0097b2;stroke-width:2.2;stroke-dasharray:7 5;stroke-linecap:round}
+.cel-k{fill:none;stroke:#00303d;stroke-width:13;stroke-linecap:round}.cel-k2{fill:none;stroke:#fff;stroke-width:6;stroke-linecap:round}
+.cel-l,.cel-k,.cel-k2{vector-effect:non-scaling-stroke}
 /* arkusz od dołu (telefon) albo panel z prawej (komputer) */
 .ark{position:fixed;left:0;right:0;bottom:0;max-height:78vh;z-index:9;background:var(--card);color:var(--ink);border-radius:16px 16px 0 0;box-shadow:0 -4px 18px rgba(0,0,0,.25);
   overflow-y:auto;padding:4px 16px calc(24px + env(safe-area-inset-bottom,0px));transform:translateY(105%);transition:transform .2s ease-out;overscroll-behavior:contain}
@@ -750,7 +759,7 @@ function budujUklad(){
     <defs><clipPath id='granica'>${G.les.map(f => `<path d='${f.d}'/>`).join('')}</clipPath></defs>
     <g id='l-pzS' clip-path='url(#granica)'></g><g id='l-wydz'></g><g id='l-pzO' clip-path='url(#granica)'></g><g id='l-szkP'></g><g id='l-cieki' clip-path='url(#granica)'></g><g id='l-drogi' clip-path='url(#granica)'></g><g id='l-pzD' clip-path='url(#granica)'></g>
     <g id='l-oddz'></g><g id='l-les'></g><g id='l-szkL'></g><g id='l-war'></g><g id='l-sel'></g><g id='l-szkD'></g><g id='l-pzI'></g><g id='l-gr'></g><g id='l-moje'></g><g id='l-wyb'></g><g id='l-mier'></g>
-    <g id='l-labW' class='lab'></g><g id='l-grLab' class='lab lab-g'></g><g id='l-mojeLab' class='lab lab-m'></g><g id='l-labO' class='lab lab-o'></g><g id='l-gps'></g>
+    <g id='l-labW' class='lab'></g><g id='l-grLab' class='lab lab-g'></g><g id='l-mojeLab' class='lab lab-m'></g><g id='l-labO' class='lab lab-o'></g><g id='l-cel'></g><g id='l-gps'></g>
   </svg></div>
   <div class='gora'>
     <div class='rok'><button onclick='rokKrok(-1)' aria-label='Poprzedni rok'>‹</button><select id='rok' onchange='ustawRok(+this.value)'>${M.lata.map(r => `<option value='${r}'${r === ST.rok ? ' selected' : ''}>${r}</option>`).join('')}</select><button onclick='rokKrok(1)' aria-label='Następny rok'>›</button></div>
@@ -763,10 +772,10 @@ function budujUklad(){
   <div class='prawo'><button onclick='zoomKrok(1/1.6)' aria-label='Przybliż'>+</button><button onclick='zoomKrok(1.6)' aria-label='Oddal'>−</button>
     <button onclick='dopasuj(G.bb)' aria-label='Całe leśnictwo'>⌂</button><button id='bGps' onclick='gpsPrzelacz()' aria-label='Moja pozycja'>📍</button>
     <button id='bMier' onclick='mierzPrzelacz()' aria-label='Pomiar długości i powierzchni'>📏</button></div>
-  <div class='dol'><div id='mier' class='mier'></div><div id='gdzie' class='gdzie' onclick='if(GPS.k)otworzKarte(GPS.k)'></div><div id='leg' class='leg'></div></div>
+  <div class='dol'><div id='mier' class='mier'></div><div id='cel' class='cel' onclick='celPokaz()'></div><div id='gdzie' class='gdzie' onclick='if(GPS.k)otworzKarte(GPS.k)'></div><div id='leg' class='leg'></div></div>
   <div id='ark' class='ark'><div class='uchwyt' onclick='zamknijArk()'></div><button class='x' onclick='zamknijArk()' aria-label='Zamknij'>×</button><div id='arkT'></div></div>`;
   rysujPodklad();
-  rysujPacz(); rysujWarstwy(); rysujMoje(); rysujMier(); rysujSzk();
+  rysujPacz(); rysujWarstwy(); rysujMoje(); rysujMier(); rysujSzk(); rysujCel();
   koloruj();
   podepnijMape();
   dopasuj(G.bb);
@@ -814,6 +823,8 @@ function koloruj(){
   }
   legenda(wyb);
 }
+// podpowiedzi na dolnym pasku (5.11, v19): tylko przy pierwszych 3 uruchomieniach mapy, potem pasek pokazuje same kolory
+const PODP = (() => { try { const n = +(localStorage.getItem('mapa-teren-podp') || 0) + 1; localStorage.setItem('mapa-teren-podp', n); return n <= 3; } catch (e) { return true; } })();
 function legenda(wyb){
   const el = document.getElementById('leg'), ile = {};
   let pozaMapa = 0;
@@ -822,8 +833,8 @@ function legenda(wyb){
   document.getElementById('ileCz').textContent = ST.cz.size ? '(' + ST.cz.size + ')' : '';
   el.innerHTML = cz.length
     ? cz.map(c => `<span class='k'><span class='kw' style='background:${kolorCz(c)}'></span><b>${esc(c)}</b> ${ile[c]}</span>`).join('') +
-      `<span class='op'>· pełny = wykonane, blady = do wykonania${pozaMapa ? ` · ${pozaMapa} poz. na całe oddziały/leśnictwo` : ''}</span>`
-    : `<span class='op'>${ST.cz.size ? 'W ' + ST.rok + ' brak wybranych zabiegów.' : 'Dotknij „Zabiegi”, żeby pokolorować mapę.'}</span>`;
+      (PODP ? `<span class='op'>· pełny = wykonane, blady = do wykonania${pozaMapa ? ` · ${pozaMapa} poz. na całe oddziały/leśnictwo` : ''}</span>` : '')
+    : ST.cz.size ? `<span class='op'>W ${ST.rok} brak wybranych zabiegów.</span>` : PODP ? `<span class='op'>Dotknij „Zabiegi”, żeby pokolorować mapę.</span>` : '';
   el.innerHTML += legSzk() + legPacz();
 }
 function ustawRok(r){ ST.rok = r; const s = document.getElementById('rok'); if (s) s.value = r; koloruj(); zapiszUst(); if (ARK === 'zab') panelZabiegi(); if (ARK === 'karta') rysujKarte(); }
@@ -921,7 +932,8 @@ function rysujKarte(){
   const tu = GPS.k === k ? ` <span class='op'>· tu jesteś</span>` : '';
   otworzArk('karta', `<h2>${esc(krotki(k))}${tu}</h2>` +
     (pr.length ? pr.map(pozDuza).join('') : `<div class='op' style='margin:8px 0'>w ${ST.rok} nic w planie</div>`) +
-    opisWydz(k) + `<div style='margin-top:14px'><button class='btn' onclick="pokazNaMapie(G.W.get('${esc(k)}').bb)">◎ Pokaż na mapie</button></div>`);
+    opisWydz(k) + `<div style='margin-top:14px;display:flex;gap:8px;flex-wrap:wrap'><button class='btn' onclick="pokazNaMapie(G.W.get('${esc(k)}').bb)">◎ Pokaż na mapie</button>` +
+    (f && f.lp && GPS.k !== k ? btnProw(f.lp.x, f.lp.y, krotki(k)) : '') + `</div>`);
 }
 // pozycja roku na górze karty (leśniczy 5.11): kolor z mapy, wykonanie / plan dużymi cyframi i procent wykonania
 function pozDuza(p){
@@ -1073,6 +1085,7 @@ function rysujPunkt(){
     <span>X (północ)</span><span>${fn(p.y, 2)}</span><span>Y (wschód)</span><span>${fn(p.x, 2)}</span>
     ${f ? `<span>Wydzielenie</span><span>${esc(krotki(f.k))}</span>` : ''}
     ${p.osnowa ? `<span>Osnowa</span><span>${esc(p.osnowa)}</span>` : ''}${p.wys ? `<span>Wysokość</span><span>${fn(p.wys, 2)} m</span>` : ''}</div>
+    <div style='margin-top:12px'>${btnProw(p.x, p.y, 'kamień ' + (p.nr || '?'))}</div>
     <p class='nota'>Z warstwy punktów granicznych Leśnej Mapy Numerycznej (gr_pkt) w paczce mLasa. Współrzędne PL-1992; dokładność taka, jak pomiar, z którego punkt wszedł do mapy.</p>`);
 }
 
@@ -1090,7 +1103,7 @@ function gpsPrzelacz(){
   if (GPS.id != null && GPS.sledz){
     navigator.geolocation.clearWatch(GPS.id); GPS.id = null; GPS.sledz = false; GPS.p = null; GPS.k = null; GPS.h = null;
     if (MI.slad){ MI.slad = false; rysujMier(); }
-    puscEkran(); rysujGps(); pokazGdzie(''); odswiezGpsBtn(); return;
+    puscEkran(); rysujGps(); rysujCel(); pokazGdzie(''); odswiezGpsBtn(); return;
   }
   GPS.sledz = true;
   if (GPS.id == null){
@@ -1114,8 +1127,8 @@ function nowaPozycja(pos){
   const f = wydzW(x, y), poprz = GPS.k; GPS.k = f ? f.k : null;
   const dok = dokTxt(pos.coords.accuracy);
   if (f){
-    const pr = M.poz.filter(p => p.adr === f.k && p.rok === ST.rok).map(p => p.cz);
-    pokazGdzie(`📍 ${krotki(f.k)} · ${dok}${pr.length ? ' · ' + ST.rok + ': ' + [...new Set(pr)].join(', ') : ''} ›`);
+    // pasek odchudzony (5.11, v19): samo wydzielenie i dokładność; zabiegi są na karcie po dotknięciu paska
+    pokazGdzie(`📍 ${krotki(f.k)} · ${dok} ›`);
   } else {
     const wLesn = G.bb && x > G.bb[0] - 2000 && x < G.bb[2] + 2000 && y > G.bb[1] - 2000 && y < G.bb[3] + 2000;
     pokazGdzie(`📍 ${wLesn ? 'poza wydzieleniami leśnictwa' : 'daleko od leśnictwa'} · ${dok}`);
@@ -1125,6 +1138,7 @@ function nowaPozycja(pos){
   if (ARK === 'mojeK') rysujMojeKarte();
   if (ARK === 'obW' && OBW && OBW.f.t === 'pkt') rysujObiektW();
   if (MI.on && MI.slad) sladPunkt();
+  if (CEL) rysujCel();
 }
 function bladGps(e){
   const t = {1:'Brak zgody na lokalizację. Zezwól przeglądarce na lokalizację (ikona kłódki przy adresie albo ustawienia witryny).',
@@ -1183,6 +1197,31 @@ function odCiebie(x, y){
   if (!GPS.p) return `<span class='op'>włącz 📍, a zobaczysz odległość i kierunek</span>`;
   const dx = x - GPS.p.x, dy = y - GPS.p.y, d = Math.hypot(dx, dy), az = (Math.atan2(dx, dy) * 180 / Math.PI + 360) % 360;
   return `<b>${d < 10 ? fn(d, 1) : fn(Math.round(d))} m</b>, kierunek <b>${fn(Math.round(az))}°</b> (${KIER[Math.round(az / 45) % 8]})<span class='op'> · GPS ${dokTxt(GPS.p.acc)}</span>`;
+}
+// ---- prowadź do (5.11, v19): cel z karty → linijka nad paskiem GPS i przerywana linia od Ciebie do celu ----------------
+// Strzałka na pasku obraca się jak na mapie (północ u góry). W marszu, gdy telefon zna kierunek, dochodzi „prosto / w prawo / w lewo”.
+let CEL = null;
+const btnProw = (x, y, n) => `<button class='btn' data-n="${esc(n)}" onclick='prowadz(${x.toFixed(2)},${y.toFixed(2)},this.dataset.n)'>➤ Prowadź</button>`;
+function prowadz(x, y, n){
+  CEL = {x, y, n}; zamknijArk();
+  if (GPS.id == null) gpsPrzelacz();
+  rysujCel();
+}
+function celKoniec(e){ if (e) e.stopPropagation(); CEL = null; rysujCel(); }
+function celPokaz(){ if (!CEL) return; const p = GPS.p || CEL; GPS.sledz = false; odswiezGpsBtn(); dopasuj([Math.min(p.x, CEL.x), Math.min(p.y, CEL.y), Math.max(p.x, CEL.x), Math.max(p.y, CEL.y)], 1.4); }
+function rysujCel(){
+  const el = document.getElementById('cel'), l = document.getElementById('l-cel'); if (!el || !l) return;
+  if (!CEL){ el.innerHTML = ''; l.innerHTML = ''; return; }
+  const kon = `<button onclick='celKoniec(event)' aria-label='Koniec prowadzenia'>✕</button>`, n = esc(CEL.n);
+  const kc = kropki([[CEL.x, CEL.y]]);
+  if (!GPS.p){ el.innerHTML = `<span class='st'>➤</span><span class='t'>${n} · czekam na GPS…</span>${kon}`; l.innerHTML = `<path class='cel-k' d='${kc}'/><path class='cel-k2' d='${kc}'/>`; return; }
+  const dx = CEL.x - GPS.p.x, dy = CEL.y - GPS.p.y, d = Math.hypot(dx, dy), az = (Math.atan2(dx, dy) * 180 / Math.PI + 360) % 360;
+  l.innerHTML = `<path class='cel-l' d='M${GPS.p.x.toFixed(2)} ${(-GPS.p.y).toFixed(2)}L${CEL.x.toFixed(2)} ${(-CEL.y).toFixed(2)}'/><path class='cel-k' d='${kc}'/><path class='cel-k2' d='${kc}'/>`;
+  const blisko = Math.max(3, ST.zew ? 0 : Math.min(GPS.p.acc, 15));
+  if (d <= blisko){ el.innerHTML = `<span class='st'>✓</span><span class='t'><b>Jesteś przy celu</b> · ${n}</span>${kon}`; return; }
+  let rada = '';
+  if (GPS.h != null){ const r = ((az - GPS.h + 540) % 360) - 180; rada = Math.abs(r) < 25 ? 'prosto' : Math.abs(r) > 150 ? 'zawróć' : r > 0 ? 'w prawo' : 'w lewo'; }
+  el.innerHTML = `<span class='st' style='transform:rotate(${Math.round(az - 90)}deg)'>➤</span><span class='t'><b>${d < 10 ? fn(d, 1) : fn(Math.round(d))} m</b> ${KIER[Math.round(az / 45) % 8]}${rada ? ' · ' + rada : ''} · ${n}</span>${kon}`;
 }
 function bbR(rings){ const b = [Infinity, Infinity, -Infinity, -Infinity]; for (const r of rings) for (let i = 0; i < r.length; i += 2){ b[0] = Math.min(b[0], r[i]); b[1] = Math.min(b[1], r[i + 1]); b[2] = Math.max(b[2], r[i]); b[3] = Math.max(b[3], r[i + 1]); } return b; }
 function odlOdc(x, y, ax, ay, bx, by){ const dx = bx - ax, dy = by - ay, l = dx * dx + dy * dy; const t = l ? Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / l)) : 0; return Math.hypot(x - ax - t * dx, y - ay - t * dy); }
@@ -1331,7 +1370,7 @@ function rysujMojeKarte(){
     <div class='kv'>${kv}${f ? `<span>Wydzielenie</span><span>${esc(krotki(f.k))}</span>` : ''}</div>
     ${o.opis ? `<p>${esc(o.opis).replace(/\n/g, '<br>')}</p>` : ''}
     ${o.acc ? `<p class='nota'>Zmierzone z GPS ±${o.acc} m: wynik przybliżony.</p>` : ''}
-    <div style='margin-top:14px;display:flex;gap:8px;flex-wrap:wrap'><button class='btn' onclick="pokazNaMapie(bbR([plaski(MOJE.find(q=>q.id==='${o.id}').pts)]))">◎ Pokaż na mapie</button>
+    <div style='margin-top:14px;display:flex;gap:8px;flex-wrap:wrap'>${(s => btnProw(s[0], s[1], o.nazwa))(srodekMoje(o))}<button class='btn' onclick="pokazNaMapie(bbR([plaski(MOJE.find(q=>q.id==='${o.id}').pts)]))">◎ Pokaż na mapie</button>
     ${f ? `<button class='btn' onclick="otworzKarte('${esc(f.k)}')">Karta ${esc(krotki(f.k))}</button>` : ''}
     ${kam ? `<button class='btn' onclick="otworzPunkt(G.gr[${G.gr.indexOf(kam)}])">Kamień ${esc(kam.nr)}</button>` : ''}
     <button class='btn' onclick="usunMoje('${o.id}')">🗑 Usuń</button></div>`);
@@ -1656,7 +1695,8 @@ function rysujObiektW(){
   otworzArk('obW', `<h2>${esc(tytulObiektu(f.a || {}))}</h2><p class='op'><span class='kw' style='background:${w.kol};vertical-align:-2px'></span> warstwa ${esc(w.nazwa)} · ${TYP_N[f.t]}</p>
     <div class='kv'>${kv}${fw ? `<span>Wydzielenie</span><span>${esc(krotki(fw.k))}</span>` : ''}</div>
     ${at.length ? `<h3>Atrybuty</h3><table>${at.map(([k, v]) => `<tr><th>${esc(k)}</th><td>${esc(typeof v === 'object' ? JSON.stringify(v) : v)}</td></tr>`).join('')}</table>` : ''}
-    ${fw ? `<div style='margin-top:14px'><button class='btn' onclick="otworzKarte('${esc(fw.k)}')">Karta wydzielenia ${esc(krotki(fw.k))}</button></div>` : ''}`);
+    <div style='margin-top:14px;display:flex;gap:8px;flex-wrap:wrap'>${f.t === 'pkt' ? btnProw(f.x, f.y, tytulObiektu(f.a || {})) : ''}
+    ${fw ? `<button class='btn' onclick="otworzKarte('${esc(fw.k)}')">Karta wydzielenia ${esc(krotki(fw.k))}</button>` : ''}</div>`);
 }
 function dodajWarstwe(){ const f = document.getElementById('plikW'); f.value = ''; f.click(); }
 document.getElementById('plikW').addEventListener('change', e => { if (e.target.files.length) importuj([...e.target.files]); });
@@ -1813,7 +1853,17 @@ async function importuj(pliki){
 }
 
 // ---- tryb offline: na stronie https pliki strony zostają w telefonie (sw.js); paczka i tak jest tylko lokalna ----
-if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(e => console.warn('sw', e));
+if ('serviceWorker' in navigator && location.protocol === 'https:'){
+  navigator.serviceWorker.register('sw.js').catch(e => console.warn('sw', e));
+  // nowa wersja (5.11, v19): gdy świeżo pobrany sw.js przejmie stronę, przeładuj raz — koniec z „otwórz dwa razy”.
+  // Pierwsza instalacja (brak poprzedniego) nie przeładowuje; w trakcie pomiaru też nie, żeby nie zgubić punktów.
+  const bylSw = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!bylSw || window.PRZEL) return;
+    if (typeof MI !== 'undefined' && MI.on && MI.pts.length){ pokazGdzie('Nowa wersja mapy wejdzie przy następnym otwarciu.'); return; }
+    window.PRZEL = true; location.reload();
+  });
+}
 
 // po powrocie do okna (z innej aplikacji albo drugiego okna mapy) moje obiekty czytane od nowa
 document.addEventListener('visibilitychange', async () => {
