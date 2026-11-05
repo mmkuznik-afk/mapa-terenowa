@@ -1131,9 +1131,10 @@ function rozrzut(x, y, sp, ts){
   h.push([x, y, t]);
   while (h.length && t - h[0][2] > 10000) h.shift();
   if (h.length < 5 || h[h.length - 1][2] - h[0][2] < 4000) return null;
-  // ruch bez podanej prędkości: średnie z pierwszej i drugiej połowy okna rozjeżdżają się bardziej niż przy samym szumie
+  // ruch bez podanej prędkości: średnie z pierwszej i drugiej połowy okna rozjeżdżają się bardziej niż przy samym szumie.
+  // Próg co najmniej 30 cm (v21): pozycja RTK nie skacze, tylko powoli pływa o 1–2 cm, i bez progu fix migał (leśniczy 5.11, test w pomieszczeniu).
   const r = rmsH(h)[2], m = h.length >> 1, a = rmsH(h.slice(0, m)), b = rmsH(h.slice(h.length - m));
-  return Math.hypot(a[0] - b[0], a[1] - b[1]) > 1.2 * r ? null : r;
+  return Math.hypot(a[0] - b[0], a[1] - b[1]) > Math.max(.3, 1.2 * r) ? null : r;
 }
 // do pomiarów: przy odbiorniku ostatni zmierzony rozrzut (na postoju), bez ostrzeżenia „wynik przybliżony”, dopóki jest poniżej metra
 const accPom = () => ST.zew ? (GPS.rozOst || 0) : GPS.p.acc;
