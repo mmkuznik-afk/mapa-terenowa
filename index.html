@@ -43,6 +43,8 @@ button,select,input,textarea{font:inherit;color:inherit}
 .gr-n{stroke:#6b3fa8;stroke-width:10}.gr-n2{stroke:#fff;stroke-width:5}
 .gr-wyb{stroke:#ff00c8;stroke-width:18}
 .lab-g{fill:#4a2380;font-weight:600}
+.pk-c{fill:none;stroke:#fff;stroke-width:17;stroke-linecap:round}
+.pk-k{fill:none;stroke:#e00000;stroke-width:12;stroke-linecap:round}
 /* pomiar (pomarańczowy, przerywany), zapisane obiekty (rdzawy), warstwy z plików (kolor warstwy z atrybutu style grupy) */
 .mi-l{fill:none;stroke:#e8590c;stroke-width:3;stroke-dasharray:9 6}
 .mi-p{fill:#e8590c;fill-opacity:.16;stroke:none}
@@ -645,11 +647,11 @@ function szacHtml(s){
 // ---- mapa terenowa (2026-11-03): reszta pisana od nowa pod telefon --------------------------
 let M = null, G = null;
 const V = {cx:0, cy:0, m:5};          // środek widoku (PL-1992) i metry na piksel ekranu
-const ST = {rok:0, cz:new Map(), status:'all', kontrRok:0, gr:true, grNr:true, moje:true, zew:false, szk:new Set(), pz:new Set()};
+const ST = {rok:0, cz:new Map(), status:'all', kontrRok:0, pk:true, gr:true, grNr:true, moje:true, zew:false, szk:new Set(), pz:new Set()};
 const GPS = {id:null, sledz:false, p:null, k:null};
 let KARTA = null, ARK = '';
 const LS = 'mapaTeren.v1';
-function zapiszUst(){ try { localStorage.setItem(LS, JSON.stringify({rok:ST.rok, cz:[...ST.cz.keys()], status:ST.status, gr:ST.gr, grNr:ST.grNr, moje:ST.moje, zew:ST.zew, szk:[...ST.szk], pz:[...ST.pz]})); } catch (e) {} }
+function zapiszUst(){ try { localStorage.setItem(LS, JSON.stringify({rok:ST.rok, cz:[...ST.cz.keys()], status:ST.status, pk:ST.pk, gr:ST.gr, grNr:ST.grNr, moje:ST.moje, zew:ST.zew, szk:[...ST.szk], pz:[...ST.pz]})); } catch (e) {} }
 function wczytajUst(){ try { return JSON.parse(localStorage.getItem(LS) || 'null'); } catch (e) { return null; } }
 function kolorCz(cz){ return PALETA[ST.cz.get(cz) % PALETA.length]; }
 
@@ -697,8 +699,8 @@ async function wczytaj(file, zapamietaj){
       const g = czytajShp(sh), a = czytajDbf(db);
       return przygotuj(g.map((x, i) => ({g:x, a:a[i] || {}})).filter(f => f.g && !f.a._usun && !(f.g.rings && !f.g.rings.length)));   // puste szkice z mLasa (5.11) wywracały wczytanie
     };
-    const [wydz, oddz, les, drogi, cieki, grp, szPol, szLin, szPkt, szPnsw, pSied, pOcp, pOprz, pDroga, pPpoz, pInfra] = await Promise.all(['wydz_pol', 'oddz_pol', 'les_pol', 'kom_lin', 'ciek_lin', 'gr_pkt', 'szkic_pol', 'szkic_lin', 'szkic_pkt', 'szkic_pnsw',
-      'sied_pol', 'ocp_pol', 'oprz_pol', 'g_droga', 'komp_lin', 'g_obinfr'].map(L));
+    const [wydz, oddz, les, drogi, cieki, grp, szPol, szLin, szPkt, szPnsw, pSied, pOcp, pOprz, pDroga, pPpoz, pInfra, olPkt] = await Promise.all(['wydz_pol', 'oddz_pol', 'les_pol', 'kom_lin', 'ciek_lin', 'gr_pkt', 'szkic_pol', 'szkic_lin', 'szkic_pkt', 'szkic_pnsw',
+      'sied_pol', 'ocp_pol', 'oprz_pol', 'g_droga', 'komp_lin', 'g_obinfr', 'ol_pkt'].map(L));
     if (!wydz.length) throw new Error('W paczce nie ma warstwy wydzieleń (wydz_pol). Potrzebny pełny ZIP z mLasa.');
     G = {wydz:[], oddz:[], les, drogi, cieki, W:new Map(), O:new Map()};
     for (const f of wydz){
@@ -715,6 +717,9 @@ async function wczytaj(file, zapamietaj){
     // punkty graniczne: nr_gran, stab T = zastabilizowany (kamień, słupek), N = bez stabilizacji; klasa i osnowa w paczce bywają puste
     G.gr = grp.filter(f => f.g.t === 'pkt' && f.x > G.bb[0] - 300 && f.x < G.bb[2] + 300 && f.y > G.bb[1] - 300 && f.y < G.bb[3] + 300)
       .map(f => ({x:f.x, y:f.y, nr:S(f.a.nr_gran), stab:S(f.a.stab) === 'T', klasa:f.a.klasa, osnowa:S(f.a.osnowa), wys:D(f.a.wys)}));
+    // partie kontrolne jesiennych poszukiwań szkodników sosny (ol_pkt, kod SZK SO) — tylko te, które leżą w wydzieleniu tego leśnictwa
+    G.pk = olPkt.filter(f => f.g.t === 'pkt' && T(f.a.kod_ob).toUpperCase().replace(/\s+/g, ' ') === 'SZK SO')
+      .map(f => ({x:f.x, y:f.y, w:wydzW(f.x, f.y)})).filter(p => p.w).map(p => ({x:p.x, y:p.y, k:p.w.k}));
     for (const sid in M.szk) M.szk[sid].geo = [];
     // szkic_pnsw: biogrupy, kępy, gniazda, luki; kod_ob dorabiamy jak na mapie przenośnej
     for (const f of szPnsw) f.a.kod_ob = 'PNSW';
@@ -728,6 +733,7 @@ async function wczytaj(file, zapamietaj){
     const u = wczytajUst(), rokTeraz = new Date().getFullYear();
     ST.rok = u && M.lata.includes(u.rok) ? u.rok : M.lata.includes(rokTeraz) ? rokTeraz : (M.lata[M.lata.length - 1] || 0);
     ST.status = u && u.status || 'all';
+    if (u && typeof u.pk === 'boolean') ST.pk = u.pk;
     if (u && typeof u.gr === 'boolean') ST.gr = u.gr;
     if (u && typeof u.grNr === 'boolean') ST.grNr = u.grNr;
     if (u && typeof u.moje === 'boolean') ST.moje = u.moje;
@@ -759,7 +765,7 @@ function budujUklad(){
   <div id='mapa'><svg id='svg' xmlns='http://www.w3.org/2000/svg' preserveAspectRatio='xMidYMid meet'>
     <defs><clipPath id='granica'>${G.les.map(f => `<path d='${f.d}'/>`).join('')}</clipPath></defs>
     <g id='l-pzS' clip-path='url(#granica)'></g><g id='l-wydz'></g><g id='l-pzO' clip-path='url(#granica)'></g><g id='l-szkP'></g><g id='l-cieki' clip-path='url(#granica)'></g><g id='l-drogi' clip-path='url(#granica)'></g><g id='l-pzD' clip-path='url(#granica)'></g>
-    <g id='l-oddz'></g><g id='l-les'></g><g id='l-szkL'></g><g id='l-war'></g><g id='l-sel'></g><g id='l-szkD'></g><g id='l-pzI'></g><g id='l-gr'></g><g id='l-moje'></g><g id='l-wyb'></g><g id='l-mier'></g>
+    <g id='l-oddz'></g><g id='l-les'></g><g id='l-szkL'></g><g id='l-war'></g><g id='l-sel'></g><g id='l-szkD'></g><g id='l-pzI'></g><g id='l-gr'></g><g id='l-pk'></g><g id='l-moje'></g><g id='l-wyb'></g><g id='l-mier'></g>
     <g id='l-labW' class='lab'></g><g id='l-grLab' class='lab lab-g'></g><g id='l-mojeLab' class='lab lab-m'></g><g id='l-labO' class='lab lab-o'></g><g id='l-cel'></g><g id='l-gps'></g>
   </svg></div>
   <div class='gora'>
@@ -805,7 +811,15 @@ function rysujPodklad(){
   const kr = p => `M${p.x.toFixed(2)} ${(-p.y).toFixed(2)}h0`;
   const t = G.gr.filter(p => p.stab).map(kr).join(''), n = G.gr.filter(p => !p.stab).map(kr).join('');
   document.getElementById('l-gr').innerHTML = `<path class='gr gr-t' d='${t}'/><path class='gr gr-n' d='${n}'/><path class='gr gr-n2' d='${n}'/><path class='gr gr-wyb' id='grWyb' d=''/>`;
+  rysujPk();
   document.getElementById('l-grLab').innerHTML = G.gr.map(p => `<text x='${p.x.toFixed(1)}' y='${(-p.y).toFixed(1)}'>${esc(p.nr)}</text>`).join('');
+}
+
+// czerwone kropki: partie kontrolne jesiennych poszukiwań szkodników pierwotnych sosny (przełącznik w ☰)
+function rysujPk(){
+  const el = document.getElementById('l-pk'); if (!el) return;
+  const d = (G.pk || []).map(p => `M${p.x.toFixed(2)} ${(-p.y).toFixed(2)}h0`).join('');
+  el.innerHTML = ST.pk && d ? `<path class='pk-c' d='${d}'/><path class='pk-k' d='${d}'/>` : '';
 }
 
 // ---- kolorowanie zabiegów roku -----------------------------------------------------------
@@ -914,6 +928,7 @@ function panelInfo(kom){
   otworzArk('info', `<h2>${esc(M.nazwa || LESN)}</h2><p>Paczka mLasa z <b>${esc(M.meta.data.toLocaleDateString('pl-PL'))}</b><br><span class='op'>${esc(M.meta.plik)}</span></p>
     ${kom || ''}
     <h3>Warstwy</h3>
+    <label class='przel'><input type='checkbox' ${ST.pk ? 'checked' : ''} ${G.pk && G.pk.length ? '' : 'disabled'} onchange='ST.pk=this.checked;zapiszUst();rysujPk();podpisy()'> <span class='kw' style='background:#e00000'></span> Szukanie szkodników sosny — PK <span class='op'>${G.pk && G.pk.length ? G.pk.length + ' ' + 'punktów' : 'brak w paczce'}</span></label>
     <label class='przel'><input type='checkbox' ${ST.gr ? 'checked' : ''} onchange='ST.gr=this.checked;zapiszUst();podpisy()'> Punkty graniczne (kamienie) <span class='op'>${G.gr.length}</span></label>
     <label class='przel'><input type='checkbox' ${ST.grNr ? 'checked' : ''} onchange='ST.grNr=this.checked;zapiszUst();podpisy()'> Numery punktów po przybliżeniu</label>
     <p class='nota'>Pełna fioletowa kropka = punkt zastabilizowany, kółko = bez stabilizacji. Kropki pojawiają się po przybliżeniu.</p>
@@ -987,6 +1002,8 @@ function podpisy(){
   ml.style.display = ST.moje && V.m < 4 ? '' : 'none';
   ml.setAttribute('font-size', (12 * V.m).toFixed(3)); ml.setAttribute('stroke-width', (3 * V.m).toFixed(3));
   ml.setAttribute('transform', `translate(0 ${(-15 * V.m).toFixed(3)})`);
+  const pkc = document.querySelector('#l-pk .pk-c'), pkk = document.querySelector('#l-pk .pk-k');   // czerwone kropki PK: stały rozmiar na ekranie
+  if (pkc){ pkc.style.strokeWidth = (14 * V.m).toFixed(2); pkk.style.strokeWidth = (10 * V.m).toFixed(2); }
   const pzi = document.getElementById('l-pzI'); if (pzi) pzi.style.display = V.m < 4 ? '' : 'none';   // składnice i mijanki po przybliżeniu
   rysujSzkDyn();
 }
