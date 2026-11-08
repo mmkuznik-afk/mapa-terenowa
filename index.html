@@ -1006,6 +1006,7 @@ function podpisy(){
   ml.setAttribute('transform', `translate(0 ${(-15 * V.m).toFixed(3)})`);
   const pkc = document.querySelector('#l-pk .pk-c'), pkk = document.querySelector('#l-pk .pk-k');   // czerwone kropki PK: stały rozmiar na ekranie
   if (pkc){ pkc.style.strokeWidth = (14 * V.m).toFixed(2); pkk.style.strokeWidth = (10 * V.m).toFixed(2); }
+  const od2 = document.querySelector('#l-oddz .oddz2'); if (od2) od2.style.strokeDasharray = `${(15 * V.m).toFixed(3)} ${(15 * V.m).toFixed(3)}`;   // kreska ok. 4 mm na ekranie przy każdym zoomie (Chrome liczy dasharray w jednostkach mapy)
   const pzi = document.getElementById('l-pzI'); if (pzi) pzi.style.display = V.m < 4 ? '' : 'none';   // składnice i mijanki po przybliżeniu
   rysujSzkDyn();
 }
