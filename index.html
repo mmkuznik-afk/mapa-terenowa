@@ -798,7 +798,16 @@ function rysujPodklad(){
   G.wydz.forEach((f, i) => f.el = lw.children[i]);
   document.getElementById('l-cieki').innerHTML = pth(G.cieki, 'ciek');
   document.getElementById('l-drogi').innerHTML = pth(G.drogi, 'droga');
-  { const dd = G.oddz.map(f => f.d).join(''); document.getElementById('l-oddz').innerHTML = `<path class='oddz' d='${dd}'/><path class='oddz2' d='${dd}'/>`; }
+  // granica dwóch oddziałów leży w pliku dwa razy (po jednym na sąsiada); rysowana dwa razy dawała przesunięte kreski, więc każdy odcinek biorę raz
+  { const seen = new Set(), kk = (x, y) => x.toFixed(1) + ',' + y.toFixed(1); let dd = '';
+    for (const f of G.oddz) for (const r of f.g.rings){ let bieg = false;
+      for (let i = 0; i + 3 < r.length; i += 2){
+        const a = kk(r[i], r[i + 1]), b = kk(r[i + 2], r[i + 3]), id = a < b ? a + '|' + b : b + '|' + a;
+        if (seen.has(id)){ bieg = false; continue; }
+        seen.add(id); if (!bieg){ dd += 'M' + r[i].toFixed(1) + ' ' + (-r[i + 1]).toFixed(1); bieg = true; }
+        dd += 'L' + r[i + 2].toFixed(1) + ' ' + (-r[i + 3]).toFixed(1);
+      } }
+    document.getElementById('l-oddz').innerHTML = `<path class='oddz' d='${dd}'/><path class='oddz2' d='${dd}'/>`; }
   document.getElementById('l-les').innerHTML = pth(G.les, 'les');
   document.getElementById('l-labO').innerHTML = G.oddz.filter(f => f.lp).map(f => `<text x='${f.lp.x.toFixed(1)}' y='${(-f.lp.y).toFixed(1)}'>${esc(f.odd)}</text>`).join('');
   // litera wydzielenia, pod nią kreska i powierzchnia w ha (v22); wnętrze skaluje się CSS-em po --vm, żeby napis miał stały rozmiar na ekranie
