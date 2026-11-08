@@ -687,16 +687,73 @@ function stan(t){ const s = document.getElementById('stan'); if (s) s.textConten
 function wybierz(){ const f = document.getElementById('plik'); f.value = ''; f.click(); }
 document.getElementById('plik').addEventListener('change', e => { if (e.target.files[0]) wczytaj(e.target.files[0], true); });
 
+// ---- ZIP z pliku bez wczytywania całości do pamięci (8.11, duże paczki całego nadleśnictwa) ----
+// Nadpisuje zipWyjmij ze wspólnego kodu: źródłem jest Blob/File (fragmenty czytane przez slice) albo ArrayBuffer (małe pliki z „Dodaj warstwę”).
+// Z paczki 500 MB do pamięci trafia spis plików i tylko te pliki, które mapa naprawdę czyta (baza jednego leśnictwa i jego warstwy SHP).
+const ZIP_SPIS = new WeakMap();
+async function zipSpis(src){
+  if (ZIP_SPIS.has(src)) return ZIP_SPIS.get(src);
+  const sz = src.size, dl = Math.min(sz, 70022), tail = new DataView(await src.slice(sz - dl).arrayBuffer());
+  let e = -1; for (let i = dl - 22; i >= 0; i--) if (tail.getUint32(i, true) === 0x06054b50){ e = i; break; }
+  if (e < 0) throw new Error('To nie jest plik ZIP.');
+  const n = tail.getUint16(e + 10, true), cdr = tail.getUint32(e + 12, true), cdo = tail.getUint32(e + 16, true);
+  if (cdo === 0xFFFFFFFF || n === 0xFFFF) throw new Error('ZIP64 (ponad 4 GB albo ponad 65 tys. plików) nie jest obsługiwany.');
+  const cd = await src.slice(cdo, cdo + cdr).arrayBuffer(), b = new Uint8Array(cd), dv = new DataView(cd), td = new TextDecoder(), wp = [];
+  let o = 0;
+  for (let k = 0; k < n; k++){
+    const nl = dv.getUint16(o + 28, true), el = dv.getUint16(o + 30, true), cl = dv.getUint16(o + 32, true);
+    wp.push({name:td.decode(b.subarray(o + 46, o + 46 + nl)), m:dv.getUint16(o + 10, true), cs:dv.getUint32(o + 20, true), lo:dv.getUint32(o + 42, true)});
+    o += 46 + nl + el + cl;
+  }
+  ZIP_SPIS.set(src, wp); return wp;
+}
+async function zipWyjmijN(src, re){   // {name, data}; nazwa wraca razem z danymi, bo warstwy ładują się równolegle
+  if (!(src instanceof Blob)) src = new Blob([src]);
+  const w = (await zipSpis(src)).find(x => re.test(x.name)); if (!w) return null;
+  const lh = new DataView(await src.slice(w.lo, w.lo + 30).arrayBuffer()), start = w.lo + 30 + lh.getUint16(26, true) + lh.getUint16(28, true);
+  const data = src.slice(start, start + w.cs);
+  if (w.m === 0) return {name:w.name, data:new Uint8Array(await data.arrayBuffer())};
+  if (w.m !== 8) throw new Error('Nieznana metoda kompresji w ZIP-ie (' + w.m + ').');
+  if (typeof DecompressionStream === 'undefined') throw new Error('Ta przeglądarka nie umie rozpakować ZIP-a. Potrzebna nowsza (Chrome/Edge 103+, Firefox 113+).');
+  return {name:w.name, data:new Uint8Array(await new Response(data.stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer())};
+}
+async function zipWyjmij(src, re){ const r = await zipWyjmijN(src, re); if (!r) return null; zipWyjmij.nazwa = r.name; return r.data; }
+// ZIP „bez kompresji” z wyjętych plików: do pamięci telefonu idzie tylko wybrane leśnictwo (ok. 85 MB zamiast całej paczki)
+function zipSklej(mapa){
+  const enc = new TextEncoder(), cz = [], cd = []; let off = 0, n = 0;
+  for (const [name, d] of mapa){
+    const nb = enc.encode(name), lh = new DataView(new ArrayBuffer(30)), ch = new DataView(new ArrayBuffer(46));
+    lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, 0x0800, true); lh.setUint16(12, 0x21, true); lh.setUint32(18, d.length, true); lh.setUint32(22, d.length, true); lh.setUint16(26, nb.length, true);
+    ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true); ch.setUint16(8, 0x0800, true); ch.setUint16(14, 0x21, true); ch.setUint32(20, d.length, true); ch.setUint32(24, d.length, true); ch.setUint16(28, nb.length, true); ch.setUint32(42, off, true);
+    cz.push(lh, nb, d); cd.push(ch, nb); off += 30 + nb.length + d.length; n++;
+  }
+  const cdl = cd.reduce((s, p) => s + (p.byteLength !== undefined ? p.byteLength : p.length), 0), ev = new DataView(new ArrayBuffer(22));
+  ev.setUint32(0, 0x06054b50, true); ev.setUint16(8, n, true); ev.setUint16(10, n, true); ev.setUint32(12, cdl, true); ev.setUint32(16, off, true);
+  return new Blob([...cz, ...cd, ev]);
+}
 async function wczytaj(file, zapamietaj){
   try {
     stan('Czytam ' + file.name + '…');
-    const buf = await file.arrayBuffer();
-    const dbB = await zipWyjmij(buf, new RegExp('(^|/)' + KOLCZYN + '/SILP\\.db$')) || await zipWyjmij(buf, /(^|\/)SILP\.db$/);
-    if (!dbB) throw new Error('W tym ZIP-ie nie ma pliku SILP.db. Czy to paczka mLasa?');
-    const folder = zipWyjmij.nazwa.replace(/SILP\.db$/, '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const buf = file, zebr = new Map();   // zebr: pliki naprawdę wyjęte z ZIP-a, do zapamiętania zamiast całej paczki
+    let nazwaWyj = '';
+    const wyj = async (re, ustaw) => { const r = await zipWyjmijN(buf, re); if (!r) return null; zebr.set(r.name, r.data); if (ustaw) nazwaWyj = r.name; return r.data; };
+    let dbB = KOLCZYN ? await wyj(new RegExp('(^|/)' + KOLCZYN + '/SILP\\.db$'), true) : null;
+    if (!dbB){
+      const dbs = (await zipSpis(buf)).map(x => x.name).filter(n => /(^|\/)SILP\.db$/.test(n));
+      if (!dbs.length) throw new Error('W tym ZIP-ie nie ma pliku SILP.db. Czy to paczka mLasa?');
+      let wyb = dbs[0];
+      if (dbs.length > 1){   // paczka całego nadleśnictwa: leśniczy wybiera swoje leśnictwo
+        const op = dbs.map((n, i) => (i + 1) + ' — ' + (n.replace(/\/?SILP\.db$/, '').split('/').pop()));
+        const k = parseInt(prompt('W paczce jest ' + dbs.length + ' leśnictw. Wpisz numer swojego:\n' + op.join('\n'), '1'), 10);
+        if (!(k >= 1 && k <= dbs.length)) throw new Error('Nie wybrano leśnictwa.');
+        wyb = dbs[k - 1];
+      }
+      dbB = await wyj(new RegExp('^' + wyb.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$'), true);
+    }
+    const folder = nazwaWyj.replace(/SILP\.db$/, '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     M = zbuduj(new Sqlite(dbB));
     const L = async n => {
-      const sh = await zipWyjmij(buf, new RegExp('^' + folder + n + '\\.shp$', 'i')), db = await zipWyjmij(buf, new RegExp('^' + folder + n + '\\.dbf$', 'i'));
+      const sh = await wyj(new RegExp('^' + folder + n + '\\.shp$', 'i')), db = await wyj(new RegExp('^' + folder + n + '\\.dbf$', 'i'));
       if (!sh || !db) return [];
       const g = czytajShp(sh), a = czytajDbf(db);
       return przygotuj(g.map((x, i) => ({g:x, a:a[i] || {}})).filter(f => f.g && !f.a._usun && !(f.g.rings && !f.g.rings.length)));   // puste szkice z mLasa (5.11) wywracały wczytanie
@@ -746,7 +803,7 @@ async function wczytaj(file, zapamietaj){
     if (u && Array.isArray(u.cz)) u.cz.forEach((c, i) => ST.cz.set(c, i));
     budujUklad();
     if (zapamietaj){
-      try { if (navigator.storage && navigator.storage.persist) await navigator.storage.persist(); await idbPut('zip', {nazwa:file.name, mod:file.lastModified, blob:new Blob([buf])}); }
+      try { if (navigator.storage && navigator.storage.persist) await navigator.storage.persist(); await idbPut('zip', {nazwa:file.name, mod:file.lastModified, blob:file.size > 150e6 && zebr.size ? zipSklej(zebr) : file}); }
       catch (e) { console.warn('Nie zapamiętano paczki', e); }
     }
   } catch (e) {
