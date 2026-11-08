@@ -88,6 +88,7 @@ button,select,input,textarea{font:inherit;color:inherit}
 .przel input{width:22px;height:22px}
 .lab{paint-order:stroke;stroke:#fff;stroke-linejoin:round;fill:#222;text-anchor:middle;dominant-baseline:central;font-family:system-ui,sans-serif;pointer-events:none}
 .lab-o{font-weight:700}
+.lw{transform:scale(var(--vm,1))}
 /* pozycja GPS (5.11, v18): mała turkusowa kropka z ciemną obwódką i tętniącym pierścieniem; w ruchu strzałka w kierunku marszu.
    Grupa #gpsG ma skalę = px ekranu, więc wymiary niżej są w pikselach. Turkusu nie ma nigdzie indziej na mapie. */
 .gps-a{fill:#00c8e6;fill-opacity:.12;stroke:#0097b2;stroke-opacity:.6}
@@ -792,7 +793,15 @@ function rysujPodklad(){
   document.getElementById('l-oddz').innerHTML = pth(G.oddz, 'oddz');
   document.getElementById('l-les').innerHTML = pth(G.les, 'les');
   document.getElementById('l-labO').innerHTML = G.oddz.filter(f => f.lp).map(f => `<text x='${f.lp.x.toFixed(1)}' y='${(-f.lp.y).toFixed(1)}'>${esc(f.odd)}</text>`).join('');
-  document.getElementById('l-labW').innerHTML = G.wydz.filter(f => f.lp && f.lit).map(f => `<text x='${f.lp.x.toFixed(1)}' y='${(-f.lp.y).toFixed(1)}'>${esc(f.lit)}</text>`).join('');
+  // litera wydzielenia, pod nią kreska i powierzchnia w ha (v22); wnętrze skaluje się CSS-em po --vm, żeby napis miał stały rozmiar na ekranie
+  const powW = f => { const s = ((M.tax[f.k] || {}).sub || [])[0] || {}; return D(s.sub_area) || D(f.a.sub_area) || 0; };
+  document.getElementById('l-labW').innerHTML = G.wydz.filter(f => f.lp && f.lit).map(f => {
+    const pw = powW(f);
+    return `<g transform='translate(${f.lp.x.toFixed(1)} ${(-f.lp.y).toFixed(1)})'><g class='lw'>` +
+      `<text y='${pw ? -8 : 0}' font-size='12' stroke-width='3'>${esc(f.lit)}</text>` +
+      (pw ? `<path d='M-8 0h16' stroke='#fff' stroke-width='3.2' stroke-linecap='round'/><path d='M-8 0h16' stroke='#222' stroke-width='1'/>` +
+        `<text y='8' font-size='9' stroke-width='2.5'>${fn(pw, 2)}</text>` : '') + `</g></g>`;
+  }).join('');
   const kr = p => `M${p.x.toFixed(2)} ${(-p.y).toFixed(2)}h0`;
   const t = G.gr.filter(p => p.stab).map(kr).join(''), n = G.gr.filter(p => !p.stab).map(kr).join('');
   document.getElementById('l-gr').innerHTML = `<path class='gr gr-t' d='${t}'/><path class='gr gr-n' d='${n}'/><path class='gr gr-n2' d='${n}'/><path class='gr gr-wyb' id='grWyb' d=''/>`;
@@ -964,7 +973,7 @@ function podpisy(){
   const po = V.m < 4 ? 15 : V.m < 9 ? 11 : 9;
   o.setAttribute('font-size', (po * V.m).toFixed(2)); o.setAttribute('stroke-width', (po / 4.5 * V.m).toFixed(2));
   o.style.display = V.m < 16 ? '' : 'none';
-  w.setAttribute('font-size', (12 * V.m).toFixed(2)); w.setAttribute('stroke-width', (3 * V.m).toFixed(2));
+  w.style.setProperty('--vm', V.m.toFixed(3));
   w.style.display = V.m < 2.6 ? '' : 'none';
   o.style.opacity = V.m < 2.6 ? .55 : 1;
   // kamienie dopiero od skali, przy której kropki się nie zlewają; numery jeszcze bliżej
