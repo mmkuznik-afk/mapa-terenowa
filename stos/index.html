@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="pl"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#3B6D11">
+<title>Pomiar stosu</title>
+<link rel="manifest" href="manifest.webmanifest"><link rel="icon" href="../ikona-192.png"><link rel="apple-touch-icon" href="../ikona-192.png">
+<!--
+  Pomiar stosu drewna ze skanu LiDAR (iPad Pro). Szacunek do kontroli, NIE do odbioru drewna.
+  Etap 1: skan czoła stosu dowolną aplikacją 3D, eksport chmury punktów w metrach (PLY, OBJ albo LAS).
+  Etap 2: ta strona: wczytuje plik, pokazuje stos z przodu, proponuje obrys czoła (do poprawienia palcem),
+  liczy pole czoła × długość wałków = mp, mp × przelicznik = m³. Działa offline, nic nie wysyła i nic nie zapisuje
+  (poza ostatnio wpisaną długością i przelicznikiem).
+-->
+<style>
+:root{--bg:#e9e7e0;--card:#fbfaf6;--ink:#23231f;--mute:#6b6a63;--line:#dcd9ce;--acc:#3B6D11;--acc-bg:#EAF3DE;--on-acc:#fff;--err-bg:#fcebeb;--err:#791f1f;--view:#f3f1ea}
+@media (prefers-color-scheme:dark){:root{color-scheme:dark;--bg:#151514;--card:#232321;--ink:#ecebe5;--mute:#a3a29b;--line:#3a3a36;--acc:#97C459;--acc-bg:#1f3109;--on-acc:#161614;--err-bg:#3b1a1a;--err:#f2b8b8;--view:#1b1b1a}}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:15px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-tap-highlight-color:transparent;padding:12px 16px calc(24px + env(safe-area-inset-bottom))}
+button,select,input{font:inherit;color:inherit}
+h1{font-size:20px;margin:4px 0 8px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin:0 auto 12px;max-width:1100px}
+.nota{color:var(--mute);font-size:13px;margin:6px 0}
+.err{background:var(--err-bg);color:var(--err);border-radius:8px;padding:8px 12px;margin-top:10px}
+.btn{border:1px solid var(--line);background:var(--card);border-radius:10px;padding:9px 14px;cursor:pointer;min-height:42px}
+.btn.main{background:var(--acc);color:var(--on-acc);border-color:var(--acc);font-weight:600}
+.btn.on{background:var(--acc-bg);border-color:var(--acc)}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+label.f{display:flex;flex-direction:column;gap:3px;font-size:13px;color:var(--mute)}
+label.f input,label.f select{font-size:17px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);width:140px}
+#widok{position:relative;width:100%;height:min(62vh,560px);background:var(--view);border:1px solid var(--line);border-radius:10px;touch-action:none;-webkit-user-select:none;user-select:none;overflow:hidden}
+#widok canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+#gora{width:100%;height:120px;background:var(--view);border:1px solid var(--line);border-radius:10px;display:block}
+.wyn{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-top:8px}
+.wyn div{background:var(--bg);border-radius:10px;padding:8px 10px}
+.wyn b{display:block;font-size:24px;font-variant-numeric:tabular-nums}
+.wyn span{font-size:12px;color:var(--mute)}
+.wyn .duzy{background:var(--acc-bg)}
+input[type=range]{width:100%}
+details summary{cursor:pointer;font-weight:600}
+.hid{display:none!important}
+</style></head>
+<body>
+
+<div class="card">
+  <h1>Pomiar stosu ze skanu</h1>
+  <p class="nota">Szacunek do kontroli, nie do odbioru. Wynik zależy głównie od przelicznika, który wpisujesz.</p>
+  <div class="row">
+    <label class="btn main">Wczytaj skan (PLY, OBJ, LAS)<input id="plik" type="file" accept=".ply,.obj,.las,application/octet-stream" class="hid"></label>
+    <span id="info" class="nota"></span>
+  </div>
+  <div id="blad" class="err hid"></div>
+  <details class="nota" style="margin-top:8px"><summary>Jak skanować</summary>
+    <ol>
+      <li>Skanuj samo czoło stosu, idąc powoli wzdłuż niego w odległości 1,5–3 m. Złap też kawałek ziemi przed stosem i oba końce stosu.</li>
+      <li>Eksportuj chmurę punktów (albo siatkę) w metrach: PLY, OBJ lub LAS (nie LAZ).</li>
+      <li>Wczytaj plik tutaj. Sprawdź oś pionową i obrys, wpisz długość wałków i przelicznik.</li>
+      <li>Na początku porównaj kilkanaście stosów z pomiarem taśmą, zanim zaczniesz ufać wynikom.</li>
+    </ol>
+  </details>
+</div>
+
+<div id="praca" class="hid">
+  <div class="card">
+    <div class="row" style="margin-bottom:8px">
+      <label class="f">Oś pionowa<select id="os"><option value="y">Y w górę</option><option value="z">Z w górę</option><option value="-y">Y w dół</option><option value="-z">Z w dół</option></select></label>
+      <label class="f" style="flex:1;min-width:200px">Obrót widoku: <span id="obrotTxt">0°</span><input id="obrot" type="range" min="-90" max="90" step="1" value="0"></label>
+    </div>
+    <div id="widok"><canvas id="cv"></canvas></div>
+    <div class="row" style="margin-top:8px">
+      <button class="btn" id="bAuto">Obrys automatyczny</button>
+      <button class="btn" id="bReczny">Rysuj ręcznie</button>
+      <button class="btn" id="bDopasuj">Dopasuj widok</button>
+    </div>
+    <p class="nota" id="pomoc">Przeciągnij punkt obrysu, żeby go przesunąć. Stuknij przy krawędzi, żeby dodać punkt. Stuknij dwa razy w punkt, żeby go usunąć. Jeden palec przesuwa widok, dwa palce przybliżają. Siatka co 0,5 m.</p>
+  </div>
+
+  <div class="card">
+    <div class="row">
+      <label class="f">Długość wałków [m]<input id="dl" type="number" inputmode="decimal" step="0.01" min="0" placeholder="np. 2,5"></label>
+      <label class="f">Przelicznik mp → m³<input id="prz" type="number" inputmode="decimal" step="0.01" min="0" placeholder="np. 0,65"></label>
+    </div>
+    <div class="wyn">
+      <div><span>Pole czoła</span><b id="rPole">–</b><span>m²</span></div>
+      <div><span>Szerokość stosu</span><b id="rSzer">–</b><span>m</span></div>
+      <div><span>Średnia wysokość</span><b id="rWys">–</b><span>m</span></div>
+      <div><span>Objętość</span><b id="rMp">–</b><span>mp</span></div>
+      <div class="duzy"><span>Masa</span><b id="rM3">–</b><span>m³</span></div>
+    </div>
+    <p class="nota">Szerokość i średnią wysokość sprawdź taśmą na pierwszych stosach. Jeśli się nie zgadzają, problem jest w skanie albo w osi pionowej, nie w przeliczniku.</p>
+  </div>
+
+  <div class="card">
+    <details id="detGleb"><summary>Zakres głębokości (gdy za stosem jest drugi stos albo krzaki)</summary>
+      <p class="nota">Widok z góry. Zostaw w pasku tylko pierwszy stos.</p>
+      <canvas id="gora"></canvas>
+      <div class="row">
+        <label class="f" style="flex:1;min-width:200px">Od <span id="gOdTxt"></span><input id="gOd" type="range" min="0" max="1000" value="0"></label>
+        <label class="f" style="flex:1;min-width:200px">Do <span id="gDoTxt"></span><input id="gDo" type="range" min="0" max="1000" value="1000"></label>
+      </div>
+    </details>
+  </div>
+</div>
+
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const CELL = 0.02;          // komórka widoku z przodu: 2 cm
+const MAX_PKT = 800000;     // więcej punktów nie poprawia pola, a spowalnia iPada
+
+// ---------- wczytywanie plików ----------
+function blad(t){ const e=$('blad'); e.textContent=t; e.classList.toggle('hid',!t); }
+
+function czytajPLY(buf){
+  const bajty = new Uint8Array(buf);
+  const limit = Math.min(bajty.length, 65536);
+  let naglowek = '', koniec = -1;
+  const txt = new TextDecoder('latin1').decode(bajty.subarray(0, limit));
+  const k = txt.indexOf('end_header');
+  if (k < 0) throw new Error('To nie wygląda na plik PLY (brak end_header).');
+  let p = k + 'end_header'.length;
+  if (txt[p] === '\r') p++;
+  if (txt[p] === '\n') p++;
+  naglowek = txt.slice(0, k); koniec = p;
+  const linie = naglowek.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+  let format = 'ascii', elementy = [], el = null;
+  for (const l of linie){
+    const t = l.split(/\s+/);
+    if (t[0]==='format') format = t[1];
+    else if (t[0]==='element'){ el = {nazwa:t[1], n:+t[2], props:[]}; elementy.push(el); }
+    else if (t[0]==='property' && el){
+      if (t[1]==='list') el.props.push({lista:true, typN:t[2], typ:t[3], nazwa:t[4]});
+      else el.props.push({typ:t[1], nazwa:t[2]});
+    }
+  }
+  const v = elementy.find(e=>e.nazwa==='vertex');
+  if (!v || !v.n) throw new Error('Plik PLY nie zawiera punktów (vertex).');
+  const ix = v.props.findIndex(q=>q.nazwa==='x'), iy = v.props.findIndex(q=>q.nazwa==='y'), iz = v.props.findIndex(q=>q.nazwa==='z');
+  if (ix<0||iy<0||iz<0) throw new Error('Plik PLY nie ma współrzędnych x, y, z.');
+  const ir = v.props.findIndex(q=>q.nazwa==='red'||q.nazwa==='r'), ig = v.props.findIndex(q=>q.nazwa==='green'||q.nazwa==='g'), ib = v.props.findIndex(q=>q.nazwa==='blue'||q.nazwa==='b');
+  const maKolor = ir>=0 && ig>=0 && ib>=0;
+  const krok = Math.max(1, Math.ceil(v.n / MAX_PKT));
+  const n = Math.ceil(v.n / krok);
+  const xyz = new Float32Array(n*3), rgb = maKolor ? new Uint8Array(n*3) : null;
+  if (format === 'ascii'){
+    const przed = elementy.indexOf(v);
+    if (elementy.slice(0,przed).some(e=>e.n>0)) throw new Error('Nietypowy PLY (punkty nie są pierwsze). Wyeksportuj ponownie.');
+    const tekst = new TextDecoder('latin1').decode(bajty.subarray(koniec));
+    let poz = 0, j = 0;
+    for (let i=0;i<v.n;i++){
+      let nl = tekst.indexOf('\n', poz); if (nl<0) nl = tekst.length;
+      if (i % krok === 0){
+        const t = tekst.slice(poz, nl).trim().split(/\s+/);
+        xyz[j*3]=+t[ix]; xyz[j*3+1]=+t[iy]; xyz[j*3+2]=+t[iz];
+        if (rgb){ const s = v.props[ir].typ.startsWith('f') ? 255 : 1; rgb[j*3]=+t[ir]*s; rgb[j*3+1]=+t[ig]*s; rgb[j*3+2]=+t[ib]*s; }
+        j++;
+      }
+      poz = nl+1;
+    }
+    return {xyz:xyz.subarray(0,j*3), rgb: rgb?rgb.subarray(0,j*3):null, nOrig:v.n};
+  }
+  const le = format === 'binary_little_endian';
+  if (!le && format !== 'binary_big_endian') throw new Error('Nieznany format PLY: '+format);
+  const ROZ = {char:1,uchar:1,int8:1,uint8:1,short:2,ushort:2,int16:2,uint16:2,int:4,uint:4,int32:4,uint32:4,float:4,float32:4,double:8,float64:8};
+  const dv = new DataView(buf);
+  const czytaj = (typ, off) => {
+    switch(typ){
+      case 'char': case 'int8': return dv.getInt8(off);
+      case 'uchar': case 'uint8': return dv.getUint8(off);
+      case 'short': case 'int16': return dv.getInt16(off,le);
+      case 'ushort': case 'uint16': return dv.getUint16(off,le);
+      case 'int': case 'int32': return dv.getInt32(off,le);
+      case 'uint': case 'uint32': return dv.getUint32(off,le);
+      case 'float': case 'float32': return dv.getFloat32(off,le);
+      default: return dv.getFloat64(off,le);
+    }
+  };
+  // przeskocz elementy przed punktami (tylko o stałym rozmiarze)
+  let off = koniec;
+  for (const e of elementy){
+    if (e===v) break;
+    if (e.props.some(q=>q.lista)) throw new Error('Nietypowy PLY (punkty nie są pierwsze). Wyeksportuj ponownie.');
+    off += e.n * e.props.reduce((s,q)=>s+ROZ[q.typ],0);
+  }
+  if (v.props.some(q=>q.lista)) throw new Error('Nietypowy PLY (lista w punktach).');
+  const offs = []; let stride = 0;
+  for (const q of v.props){ offs.push(stride); stride += ROZ[q.typ]; }
+  if (off + v.n*stride > buf.byteLength) throw new Error('Plik PLY jest ucięty.');
+  const kolSkala = maKolor ? (v.props[ir].typ.startsWith('f') ? 255 : (ROZ[v.props[ir].typ]===2 ? 1/257 : 1)) : 1;
+  let j = 0;
+  for (let i=0;i<v.n;i+=krok){
+    const b = off + i*stride;
+    xyz[j*3]=czytaj(v.props[ix].typ,b+offs[ix]); xyz[j*3+1]=czytaj(v.props[iy].typ,b+offs[iy]); xyz[j*3+2]=czytaj(v.props[iz].typ,b+offs[iz]);
+    if (rgb){ rgb[j*3]=czytaj(v.props[ir].typ,b+offs[ir])*kolSkala; rgb[j*3+1]=czytaj(v.props[ig].typ,b+offs[ig])*kolSkala; rgb[j*3+2]=czytaj(v.props[ib].typ,b+offs[ib])*kolSkala; }
+    j++;
+  }
+  return {xyz:xyz.subarray(0,j*3), rgb: rgb?rgb.subarray(0,j*3):null, nOrig:v.n};
+}
+
+function czytajOBJ(buf){
+  const tekst = new TextDecoder('utf-8').decode(buf);
+  const xs = [], cs = [];
+  let poz = 0, maKolor = true;
+  while (poz < tekst.length){
+    let nl = tekst.indexOf('\n', poz); if (nl<0) nl = tekst.length;
+    if (tekst.charCodeAt(poz)===118 && tekst.charCodeAt(poz+1)===32){ // "v "
+      const t = tekst.slice(poz+2, nl).trim().split(/\s+/);
+      xs.push(+t[0], +t[1], +t[2]);
+      if (t.length >= 6){ const s = (+t[3]<=1 && +t[4]<=1 && +t[5]<=1) ? 255 : 1; cs.push(+t[3]*s, +t[4]*s, +t[5]*s); } else maKolor = false;
+    }
+    poz = nl+1;
+  }
+  if (!xs.length) throw new Error('Plik OBJ nie zawiera punktów (linie "v").');
+  const nOrig = xs.length/3, krok = Math.max(1, Math.ceil(nOrig/MAX_PKT)), n = Math.ceil(nOrig/krok);
+  const xyz = new Float32Array(n*3), rgb = maKolor && cs.length===xs.length ? new Uint8Array(n*3) : null;
+  for (let i=0,j=0;i<nOrig;i+=krok,j++){ for (let k=0;k<3;k++){ xyz[j*3+k]=xs[i*3+k]; if (rgb) rgb[j*3+k]=cs[i*3+k]; } }
+  return {xyz, rgb, nOrig};
+}
+
+function czytajLAS(buf){
+  const dv = new DataView(buf);
+  const sig = String.fromCharCode(dv.getUint8(0),dv.getUint8(1),dv.getUint8(2),dv.getUint8(3));
+  if (sig !== 'LASF') throw new Error('To nie jest plik LAS.');
+  const offPkt = dv.getUint32(96,true), fmtRaw = dv.getUint8(104), dlRek = dv.getUint16(105,true);
+  if (fmtRaw & 0x80) throw new Error('Plik jest skompresowany (LAZ). Wyeksportuj zwykły LAS, PLY albo OBJ.');
+  const fmt = fmtRaw & 0x3f;
+  let n = dv.getUint32(107,true);
+  const wer = dv.getUint8(25);
+  if (!n && wer >= 4 && buf.byteLength > 255) n = Number(dv.getBigUint64(247,true));
+  n = Math.min(n, Math.floor((buf.byteLength-offPkt)/dlRek));
+  if (!n) throw new Error('Plik LAS nie zawiera punktów.');
+  const sx=dv.getFloat64(131,true), sy=dv.getFloat64(139,true), sz=dv.getFloat64(147,true);
+  const ox=dv.getFloat64(155,true), oy=dv.getFloat64(163,true), oz=dv.getFloat64(171,true);
+  const kolOff = {2:20,3:28,5:28,7:30,8:30,10:30}[fmt];
+  const krok = Math.max(1, Math.ceil(n/MAX_PKT)), m = Math.ceil(n/krok);
+  const xyz = new Float32Array(m*3), rgb = kolOff!==undefined ? new Uint8Array(m*3) : null;
+  // współrzędne LAS bywają duże (układ państwowy) — odejmij pierwszy punkt, żeby float32 nie gubił centymetrów
+  const x0 = dv.getInt32(offPkt,true)*sx+ox, y0 = dv.getInt32(offPkt+4,true)*sy+oy, z0 = dv.getInt32(offPkt+8,true)*sz+oz;
+  let maxK = 0;
+  for (let i=0,j=0;i<n;i+=krok,j++){
+    const b = offPkt + i*dlRek;
+    xyz[j*3]=dv.getInt32(b,true)*sx+ox-x0; xyz[j*3+1]=dv.getInt32(b+4,true)*sy+oy-y0; xyz[j*3+2]=dv.getInt32(b+8,true)*sz+oz-z0;
+    if (rgb){ for (let k=0;k<3;k++){ const c = dv.getUint16(b+kolOff+2*k,true); if (c>maxK) maxK=c; } }
+  }
+  if (rgb){
+    const s = maxK > 255 ? 1/257 : 1;
+    for (let i=0,j=0;i<n;i+=krok,j++){ const b = offPkt + i*dlRek; for (let k=0;k<3;k++) rgb[j*3+k] = dv.getUint16(b+kolOff+2*k,true)*s; }
+  }
+  return {xyz, rgb: (rgb && maxK>0) ? rgb : null, nOrig:n};
+}
+
+// ---------- stan ----------
+const S = {
+  dane:null, nazwa:'', os:'y', obrot:0,
+  // po przeliczeniu:
+  n:0, u:null, v:null, w:null, ziemia:0, kat:0, wMin:0, wMax:1, gOd:0, gDo:1,
+  siatka:null,   // {nx,ny,u0,v0,img(canvas),zajete,dol[]}
+  obrys:[],      // [[u,v],...] w metrach
+  reczny:false,
+  widok:{s:100, ox:0, oy:0}
+};
+
+function percentyl(arr, p){
+  const n = arr.length; if (!n) return 0;
+  const krok = Math.max(1, Math.floor(n/200000));
+  const a = []; for (let i=0;i<n;i+=krok) a.push(arr[i]);
+  a.sort((x,y)=>x-y);
+  return a[Math.min(a.length-1, Math.max(0, Math.round(p/100*(a.length-1))))];
+}
+
+// Rzutowanie: v = wysokość, (a,b) = poziom; u = wzdłuż stosu, w = głębokość.
+function przelicz(nowyKat){
+  const d = S.dane, n = d.xyz.length/3, xyz = d.xyz;
+  const znak = S.os[0]==='-' ? -1 : 1, os = S.os.replace('-','');
+  const iV = os==='y' ? 1 : 2, iA = 0, iB = os==='y' ? 2 : 1;
+  const V = new Float32Array(n), A = new Float32Array(n), B = new Float32Array(n);
+  for (let i=0;i<n;i++){ V[i]=znak*xyz[i*3+iV]; A[i]=xyz[i*3+iA]; B[i]=xyz[i*3+iB]; }
+  S.ziemia = percentyl(V, 1);
+  // próbka punktów powyżej ziemi (do szukania czoła)
+  const pr = []; { const krok = Math.max(1, Math.floor(n/300000)); for (let i=0;i<n;i+=krok) if (V[i] > S.ziemia+0.3) pr.push(i); }
+  while (pr.length > 60000){ for (let k=pr.length-1;k>0;k-=2) pr.splice(k,1); }
+  const HB = 0.03;
+  const histW = t => { const co=Math.cos(t), si=Math.sin(t), m = new Map();
+    for (const i of pr){ const b = Math.floor((-A[i]*si+B[i]*co)/HB); m.set(b, (m.get(b)||0)+1); } return m; };
+  if (nowyKat && pr.length >= 50){
+    // czoło stosu = najgęstsza pionowa płaszczyzna: szukam kąta, przy którym rzut na głębokość daje najostrzejszy szczyt
+    const ostrosc = t => { let mx = 0; for (const c of histW(t).values()) if (c>mx) mx=c; return mx; };
+    let best = -1, bt = 0;
+    for (let st=0; st<180; st+=1){ const t = st*Math.PI/180, m = ostrosc(t); if (m>best){ best=m; bt=t; } }
+    let bt2 = bt;
+    for (let st=-1; st<=1.001; st+=0.1){ const t = bt + st*Math.PI/180, m = ostrosc(t); if (m>best){ best=m; bt2=t; } }
+    S.kat = bt2;
+  } else if (nowyKat) S.kat = 0;
+  let t = S.kat + S.obrot*Math.PI/180;
+  // czoło: z silnych szczytów biorę najbliższy miejscu startu skanu (początek układu), stos ma leżeć za czołem (+w)
+  let wCzolo = 0;
+  if (pr.length >= 50){
+    let h = histW(t), mx = 0; for (const c of h.values()) if (c>mx) mx=c;
+    let dmin = 1e9; for (const [b,c] of h) if (c >= 0.5*mx){ const w = (b+0.5)*HB; if (Math.abs(w) < dmin){ dmin=Math.abs(w); wCzolo=w; } }
+    const co=Math.cos(t), si=Math.sin(t); let przod=0, tyl=0;
+    for (const i of pr){ const w = -A[i]*si+B[i]*co - wCzolo; if (V[i] > S.ziemia+0.5){ if (w>0.1&&w<1.2) tyl++; else if (w<-0.1&&w>-1.2) przod++; } }
+    if (przod > tyl){ t += Math.PI; S.kat += Math.PI; wCzolo = -wCzolo; }
+  }
+  const co = Math.cos(t), si = Math.sin(t);
+  const U = new Float32Array(n), W = new Float32Array(n);
+  for (let i=0;i<n;i++){ U[i]=A[i]*co+B[i]*si; W[i]=-A[i]*si+B[i]*co; }
+  S.n=n; S.u=U; S.v=V; S.w=W;
+  S.wMin = percentyl(W, 0.2); S.wMax = percentyl(W, 99.8);
+  if (S.wMax - S.wMin < 0.05) S.wMax = S.wMin + 0.05;
+  // domyślny pas głębokości: od 0,6 m przed czołem do długości wałków (albo 2,5 m) + 0,3 m za nim
+  const dl = liczbaPL($('dl').value) > 0 ? liczbaPL($('dl').value) : 2.5;
+  S.gOd = Math.max(S.wMin, wCzolo - 0.6); S.gDo = Math.min(S.wMax, wCzolo + dl + 0.3);
+  if (S.gDo - S.gOd < 0.1){ S.gOd = S.wMin; S.gDo = S.wMax; }
+  const R = S.wMax - S.wMin;
+  $('gOd').value = Math.round((S.gOd-S.wMin)/R*1000); $('gDo').value = Math.round((S.gDo-S.wMin)/R*1000);
+  zbudujSiatke();
+}
+
+function wPasie(i){ return S.w[i] >= S.gOd && S.w[i] <= S.gDo; }
+
+// Widok z przodu jako siatka 2 cm: kolor punktów, zajętość, dolna krawędź (ziemia) w każdej kolumnie.
+function zbudujSiatke(){
+  const U=S.u, V=S.v, n=S.n;
+  const idx = []; for (let i=0;i<n;i++) if (wPasie(i)) idx.push(i);
+  const uu = Float32Array.from(idx, i=>U[i]), vv = Float32Array.from(idx, i=>V[i]);
+  const u0 = percentyl(uu, 0.2) - 0.1, u1 = percentyl(uu, 99.8) + 0.1;
+  const v0 = percentyl(vv, 0.5) - 0.2, v1 = percentyl(vv, 99.8) + 0.1;
+  const nx = Math.max(1, Math.ceil((u1-u0)/CELL)), ny = Math.max(1, Math.ceil((v1-v0)/CELL));
+  if (nx*ny > 25e6) throw new Error('Skan jest za duży albo nie jest w metrach.');
+  const lic = new Uint32Array(nx*ny), r = new Float32Array(nx*ny), g = new Float32Array(nx*ny), b = new Float32Array(nx*ny), gl = new Float32Array(nx*ny);
+  const rgb = S.dane.rgb, zakresW = (S.gDo - S.gOd) || 1;
+  const kolNajnizszy = []; for (let x=0;x<nx;x++) kolNajnizszy.push([]);
+  for (const i of idx){
+    const x = Math.floor((U[i]-u0)/CELL), y = Math.floor((V[i]-v0)/CELL);
+    if (x<0||y<0||x>=nx||y>=ny) continue;
+    const k = y*nx+x; lic[k]++;
+    if (rgb){ r[k]+=rgb[i*3]; g[k]+=rgb[i*3+1]; b[k]+=rgb[i*3+2]; }
+    gl[k] += (S.w[i]-S.gOd)/zakresW;
+  }
+  // ziemia w kolumnach: 3. percentyl wysokości punktów kolumny (kolumny po 10 cm, potem wygładzenie)
+  const KOL = 5, nk = Math.ceil(nx/KOL), dolK = new Float32Array(nk).fill(NaN);
+  const zbior = []; for (let k=0;k<nk;k++) zbior.push([]);
+  for (const i of idx){ const x = Math.floor((U[i]-u0)/CELL); if (x>=0&&x<nx) zbior[Math.floor(x/KOL)].push(V[i]); }
+  for (let k=0;k<nk;k++){ const a = zbior[k]; if (a.length >= 20){ a.sort((p,q)=>p-q); dolK[k] = a[Math.floor(a.length*0.03)]; } }
+  // brak danych: najbliższa kolumna z danymi, w ostateczności ziemia globalna
+  for (let k=0;k<nk;k++) if (isNaN(dolK[k])){
+    let best = S.ziemia, dmin = 1e9;
+    for (let j=0;j<nk;j++) if (!isNaN(dolK[j]) && Math.abs(j-k)<dmin){ dmin=Math.abs(j-k); best=dolK[j]; }
+    dolK[k] = best;
+  }
+  // mediana z 5 kolumn, żeby pojedyncze patyki nie podnosiły ziemi
+  const dolM = new Float32Array(nk);
+  for (let k=0;k<nk;k++){ const a=[]; for (let j=k-2;j<=k+2;j++) if (j>=0&&j<nk) a.push(dolK[j]); a.sort((p,q)=>p-q); dolM[k]=a[a.length>>1]; }
+  const dol = new Float32Array(nx); for (let x=0;x<nx;x++) dol[x] = dolM[Math.floor(x/KOL)];
+
+  const cv = document.createElement('canvas'); cv.width = nx; cv.height = ny;
+  const ctx = cv.getContext('2d'), im = ctx.createImageData(nx, ny);
+  for (let y=0;y<ny;y++) for (let x=0;x<nx;x++){
+    const k = y*nx+x, p = ((ny-1-y)*nx+x)*4, c = lic[k];
+    if (!c) continue;
+    if (rgb){ im.data[p]=r[k]/c; im.data[p+1]=g[k]/c; im.data[p+2]=b[k]/c; }
+    else { const s = 1 - gl[k]/c; im.data[p]=70+120*s; im.data[p+1]=55+80*s; im.data[p+2]=35+40*s; }
+    im.data[p+3] = 255;
+  }
+  ctx.putImageData(im, 0, 0);
+  S.siatka = {nx, ny, u0, v0, lic, dol, img:cv};
+  rysujGore();
+}
+
+// ---------- obrys automatyczny ----------
+function obrysAuto(){
+  const {nx, ny, u0, v0, lic, dol} = S.siatka;
+  const zaj = new Uint8Array(nx*ny);
+  for (let y=0;y<ny;y++){ const vy = v0+(y+0.5)*CELL; for (let x=0;x<nx;x++) if (lic[y*nx+x] && vy > dol[x]+0.08) zaj[y*nx+x]=1; }
+  // domknięcie dziur między kłodami: dylatacja 3 komórki, potem erozja 3 komórki
+  const dyl = (src, r) => { const out = new Uint8Array(nx*ny);
+    for (let y=0;y<ny;y++) for (let x=0;x<nx;x++) if (src[y*nx+x]) for (let dy=-r;dy<=r;dy++){ const yy=y+dy; if (yy<0||yy>=ny) continue; for (let dx=-r;dx<=r;dx++){ const xx=x+dx; if (xx>=0&&xx<nx) out[yy*nx+xx]=1; } }
+    return out; };
+  const ero = (src, r) => { const out = new Uint8Array(nx*ny);
+    for (let y=0;y<ny;y++) for (let x=0;x<nx;x++){ let ok = 1;
+      for (let dy=-r;dy<=r&&ok;dy++){ const yy=y+dy; if (yy<0||yy>=ny){ ok=0; break; } for (let dx=-r;dx<=r;dx++){ const xx=x+dx; if (xx<0||xx>=nx||!src[yy*nx+xx]){ ok=0; break; } } }
+      out[y*nx+x]=ok; }
+    return out; };
+  // domknięcie, potem otwarcie (usuwa cienkie pasy trawy i pojedyncze patyki, cieńsze niż ok. 16 cm)
+  const zam = dyl(ero(ero(dyl(zaj,3),3),4),4);
+  // największa spójna plama = stos
+  const etyk = new Int32Array(nx*ny); let naj = 0, najRoz = 0, nr = 0;
+  const stos = [];
+  for (let s=0;s<nx*ny;s++){
+    if (!zam[s] || etyk[s]) continue;
+    nr++; let roz = 0; stos.push(s); etyk[s]=nr;
+    while (stos.length){ const k = stos.pop(); roz++; const x=k%nx, y=(k/nx)|0;
+      const sas = [x>0?k-1:-1, x<nx-1?k+1:-1, y>0?k-nx:-1, y<ny-1?k+nx:-1];
+      for (const q of sas) if (q>=0 && zam[q] && !etyk[q]){ etyk[q]=nr; stos.push(q); } }
+    if (roz > najRoz){ najRoz = roz; naj = nr; }
+  }
+  if (!naj || najRoz*CELL*CELL < 0.1) throw new Error('Nie znalazłem stosu w skanie. Sprawdź oś pionową albo narysuj obrys ręcznie.');
+  // górna krawędź w kolumnach
+  const gora = new Float32Array(nx).fill(NaN);
+  for (let x=0;x<nx;x++) for (let y=ny-1;y>=0;y--) if (etyk[y*nx+x]===naj){ gora[x] = v0+(y+0.5)*CELL; break; }
+  let xl = 0; while (xl<nx && isNaN(gora[xl])) xl++;
+  let xr = nx-1; while (xr>=0 && isNaN(gora[xr])) xr--;
+  // mediana z 9 kolumn (18 cm): wystające pojedyncze wałki nie zawyżają wysokości
+  const gm = [];
+  for (let x=xl;x<=xr;x++){ const a=[]; for (let j=x-4;j<=x+4;j++) if (j>=xl&&j<=xr&&!isNaN(gora[j])) a.push(gora[j]); a.sort((p,q)=>p-q); gm.push(a.length?a[a.length>>1]:dol[x]); }
+  const ug = x => u0 + (x+0.5)*CELL;
+  const gorne = [], dolne = [];
+  for (let x=xl;x<=xr;x++){ gorne.push([ug(x), gm[x-xl]]); dolne.push([ug(x), dol[x]]); }
+  const uprosc = pts => douglas(pts, 0.03);
+  const g2 = uprosc(gorne), d2 = uprosc(dolne);
+  const lewy = u0 + (xl+0.5)*CELL, prawy = u0 + (xr+0.5)*CELL;
+  g2[0][0] = lewy; g2[g2.length-1][0] = prawy; d2[0][0] = lewy; d2[d2.length-1][0] = prawy;
+  S.obrys = d2.concat(g2.reverse());
+  S.reczny = false; $('bReczny').classList.remove('on');
+}
+
+function douglas(pts, tol){
+  if (pts.length < 3) return pts.map(p=>p.slice());
+  const keep = new Uint8Array(pts.length); keep[0]=keep[pts.length-1]=1;
+  const st = [[0, pts.length-1]];
+  while (st.length){
+    const [a,b] = st.pop(); let dm = 0, im = -1;
+    const [ax,ay]=pts[a], [bx,by]=pts[b], dx=bx-ax, dy=by-ay, L=Math.hypot(dx,dy)||1;
+    for (let i=a+1;i<b;i++){ const d = Math.abs(dy*(pts[i][0]-ax) - dx*(pts[i][1]-ay))/L; if (d>dm){ dm=d; im=i; } }
+    if (dm > tol){ keep[im]=1; st.push([a,im],[im,b]); }
+  }
+  return pts.filter((_,i)=>keep[i]).map(p=>p.slice());
+}
+
+// ---------- wynik ----------
+function liczbaPL(s){ return parseFloat(String(s).replace(',', '.')); }
+function fmt(x, d){ return isFinite(x) ? x.toLocaleString('pl-PL',{minimumFractionDigits:d, maximumFractionDigits:d}) : '–'; }
+function pole(p){ let s=0; for (let i=0;i<p.length;i++){ const [x1,y1]=p[i], [x2,y2]=p[(i+1)%p.length]; s += x1*y2-x2*y1; } return Math.abs(s)/2; }
+function wynik(){
+  const ok = S.obrys.length >= 3 && !S.reczny;
+  const P = ok ? pole(S.obrys) : NaN;
+  const xs = S.obrys.map(p=>p[0]), szer = ok ? Math.max(...xs)-Math.min(...xs) : NaN;
+  const dl = liczbaPL($('dl').value), prz = liczbaPL($('prz').value);
+  const mp = P*dl, m3 = mp*prz;
+  $('rPole').textContent = fmt(P,2); $('rSzer').textContent = fmt(szer,2); $('rWys').textContent = fmt(P/szer,2);
+  $('rMp').textContent = dl>0 ? fmt(mp,2) : '–'; $('rM3').textContent = dl>0 && prz>0 ? fmt(m3,2) : '–';
+  try { localStorage.setItem('stos-dl', $('dl').value); localStorage.setItem('stos-prz', $('prz').value); } catch(e){}
+}
+
+// ---------- rysowanie ----------
+const cv = $('cv'), ctx = cv.getContext('2d');
+function rozmiar(){ const r = cv.getBoundingClientRect(), d = devicePixelRatio||1; cv.width = Math.round(r.width*d); cv.height = Math.round(r.height*d); rysuj(); }
+const naEkran = (u,v) => [S.widok.ox + u*S.widok.s, S.widok.oy - v*S.widok.s];
+const zEkranu = (x,y) => [(x-S.widok.ox)/S.widok.s, (S.widok.oy-y)/S.widok.s];
+function dopasuj(){
+  if (!S.siatka) return;
+  const r = cv.getBoundingClientRect(), {nx,ny,u0,v0} = S.siatka;
+  const s = Math.min(r.width/(nx*CELL), r.height/(ny*CELL))*0.94;
+  S.widok = {s, ox: r.width/2 - (u0+nx*CELL/2)*s, oy: r.height/2 + (v0+ny*CELL/2)*s};
+  rysuj();
+}
+function kolor(n){ return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+function rysuj(){
+  const d = devicePixelRatio||1; ctx.setTransform(d,0,0,d,0,0);
+  const W = cv.width/d, H = cv.height/d; ctx.clearRect(0,0,W,H);
+  if (!S.siatka) return;
+  const {nx,ny,u0,v0,img} = S.siatka, s = S.widok.s;
+  // siatka co 0,5 m
+  ctx.strokeStyle = kolor('--line'); ctx.lineWidth = 1; ctx.fillStyle = kolor('--mute'); ctx.font = '11px system-ui';
+  const [ua, vb] = zEkranu(0, H), [ub, va] = zEkranu(W, 0);
+  for (let u=Math.ceil(ua*2)/2; u<=ub; u+=0.5){ const [x]=naEkran(u,0); ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+  for (let v=Math.ceil(vb*2)/2; v<=va; v+=0.5){ const [,y]=naEkran(0,v); ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+  ctx.imageSmoothingEnabled = false;
+  const [x0,y0] = naEkran(u0, v0+ny*CELL);
+  ctx.drawImage(img, x0, y0, nx*CELL*s, ny*CELL*s);
+  // skala 1 m
+  ctx.fillStyle = kolor('--ink'); ctx.fillRect(12, H-18, s, 4); ctx.fillText('1 m', 12, H-24);
+  // obrys
+  const p = S.obrys; if (!p.length) return;
+  ctx.beginPath(); p.forEach((q,i)=>{ const [x,y]=naEkran(q[0],q[1]); i?ctx.lineTo(x,y):ctx.moveTo(x,y); });
+  if (!S.reczny) ctx.closePath();
+  ctx.fillStyle = 'rgba(232,89,12,.18)'; if (!S.reczny) ctx.fill();
+  ctx.strokeStyle = '#e8590c'; ctx.lineWidth = 2.5; ctx.stroke();
+  for (const q of p){ const [x,y]=naEkran(q[0],q[1]); ctx.beginPath(); ctx.arc(x,y,7,0,7); ctx.fillStyle='#fff'; ctx.fill(); ctx.lineWidth=2.5; ctx.strokeStyle='#e8590c'; ctx.stroke(); }
+}
+
+// widok z góry z paskiem głębokości
+function rysujGore(){
+  const g = $('gora'), d = devicePixelRatio||1, r = g.getBoundingClientRect();
+  if (!r.width) return;
+  g.width = Math.round(r.width*d); g.height = Math.round(r.height*d);
+  const c = g.getContext('2d'); c.setTransform(d,0,0,d,0,0); c.clearRect(0,0,r.width,r.height);
+  const {u0, nx} = S.siatka, u1 = u0+nx*CELL, W = r.width, H = r.height;
+  const sx = W/(u1-u0), sy = H/(S.wMax-S.wMin);
+  c.fillStyle = kolor('--mute');
+  const krok = Math.max(1, Math.floor(S.n/40000));
+  for (let i=0;i<S.n;i+=krok) c.fillRect((S.u[i]-u0)*sx, (S.w[i]-S.wMin)*sy, 1, 1);
+  c.fillStyle = 'rgba(232,89,12,.15)'; c.fillRect(0, (S.gOd-S.wMin)*sy, W, (S.gDo-S.gOd)*sy);
+  c.strokeStyle = '#e8590c'; c.lineWidth = 2;
+  for (const w of [S.gOd, S.gDo]){ c.beginPath(); c.moveTo(0,(w-S.wMin)*sy); c.lineTo(W,(w-S.wMin)*sy); c.stroke(); }
+  $('gOdTxt').textContent = fmt(S.gOd-S.wMin,2)+' m'; $('gDoTxt').textContent = fmt(S.gDo-S.wMin,2)+' m';
+}
+
+// ---------- dotyk ----------
+const wsk = new Map(); let gest = null, ostatniTap = {t:0, i:-1};
+function pozycja(e){ const r = cv.getBoundingClientRect(); return [e.clientX-r.left, e.clientY-r.top]; }
+function najblizszyPunkt(x,y){ let best=-1, dm=24; S.obrys.forEach((q,i)=>{ const [a,b]=naEkran(q[0],q[1]); const d=Math.hypot(a-x,b-y); if (d<dm){ dm=d; best=i; } }); return best; }
+function najblizszaKrawedz(x,y){
+  let best=-1, dm=22, n=S.obrys.length;
+  for (let i=0;i<n;i++){ const [ax,ay]=naEkran(...S.obrys[i]), [bx,by]=naEkran(...S.obrys[(i+1)%n]);
+    const dx=bx-ax, dy=by-ay, L2=dx*dx+dy*dy||1, t=Math.max(0,Math.min(1,((x-ax)*dx+(y-ay)*dy)/L2));
+    const d = Math.hypot(ax+t*dx-x, ay+t*dy-y); if (d<dm){ dm=d; best=i; } }
+  return best;
+}
+cv.addEventListener('pointerdown', e => {
+  cv.setPointerCapture(e.pointerId); const p = pozycja(e); wsk.set(e.pointerId, p);
+  if (wsk.size === 1){
+    const i = S.reczny ? -1 : najblizszyPunkt(...p);
+    gest = {typ: i>=0 ? 'punkt' : 'przesun', i, start:p, ost:p, t:Date.now(), ruch:0};
+  } else if (wsk.size === 2){
+    const [a,b] = [...wsk.values()];
+    gest = {typ:'szczypanie', d0: Math.hypot(a[0]-b[0],a[1]-b[1]), m0:[(a[0]+b[0])/2,(a[1]+b[1])/2], w0:{...S.widok}, ruch:99};
+  }
+});
+cv.addEventListener('pointermove', e => {
+  if (!wsk.has(e.pointerId) || !gest) return;
+  const p = pozycja(e); wsk.set(e.pointerId, p);
+  if (gest.typ === 'szczypanie' && wsk.size === 2){
+    const [a,b] = [...wsk.values()], d = Math.hypot(a[0]-b[0],a[1]-b[1]), m = [(a[0]+b[0])/2,(a[1]+b[1])/2];
+    const k = d/(gest.d0||1), w0 = gest.w0, s = Math.max(5, Math.min(5000, w0.s*k));
+    const uu = (gest.m0[0]-w0.ox)/w0.s, vv = (w0.oy-gest.m0[1])/w0.s;
+    S.widok = {s, ox: m[0]-uu*s, oy: m[1]+vv*s}; rysuj(); return;
+  }
+  gest.ruch = Math.max(gest.ruch, Math.hypot(p[0]-gest.start[0], p[1]-gest.start[1]));
+  if (gest.typ === 'punkt' && gest.ruch > 3){ S.obrys[gest.i] = zEkranu(...p); rysuj(); wynik(); }
+  else if (gest.typ === 'przesun'){ S.widok.ox += p[0]-gest.ost[0]; S.widok.oy += p[1]-gest.ost[1]; rysuj(); }
+  gest.ost = p;
+});
+function koniecDotyku(e){
+  if (!wsk.has(e.pointerId)) return;
+  const p = wsk.get(e.pointerId); wsk.delete(e.pointerId);
+  if (!gest) return;
+  const tap = gest.ruch < 8 && Date.now()-gest.t < 400 && gest.typ !== 'szczypanie';
+  if (tap){
+    if (S.reczny){ S.obrys.push(zEkranu(...p)); }
+    else if (gest.typ === 'punkt'){
+      const teraz = Date.now();
+      if (ostatniTap.i === gest.i && teraz-ostatniTap.t < 450 && S.obrys.length > 3){ S.obrys.splice(gest.i,1); ostatniTap={t:0,i:-1}; }
+      else ostatniTap = {t:teraz, i:gest.i};
+    } else {
+      const k = najblizszaKrawedz(...p); if (k>=0) S.obrys.splice(k+1, 0, zEkranu(...p));
+    }
+    rysuj(); wynik();
+  }
+  if (wsk.size === 0) gest = null;
+  else if (gest.typ === 'szczypanie') gest = null;
+}
+cv.addEventListener('pointerup', koniecDotyku);
+cv.addEventListener('pointercancel', koniecDotyku);
+cv.addEventListener('wheel', e => { e.preventDefault(); const [x,y] = pozycja(e), k = Math.exp(-e.deltaY*0.0015), w = S.widok;
+  const uu=(x-w.ox)/w.s, vv=(w.oy-y)/w.s, s=Math.max(5,Math.min(5000,w.s*k)); S.widok={s, ox:x-uu*s, oy:y+vv*s}; rysuj(); }, {passive:false});
+
+// ---------- przyciski ----------
+function bezpiecznie(f){ try { blad(''); f(); } catch(err){ console.error(err); blad(err.message || String(err)); } }
+$('plik').addEventListener('change', async e => {
+  const f = e.target.files[0]; if (!f) return;
+  $('info').textContent = 'Wczytuję ' + f.name + '…';
+  await new Promise(r=>setTimeout(r,30));
+  const buf = await f.arrayBuffer();
+  bezpiecznie(() => {
+    const roz = f.name.toLowerCase().split('.').pop();
+    const d = roz==='ply' ? czytajPLY(buf) : roz==='obj' ? czytajOBJ(buf) : roz==='las' ? czytajLAS(buf)
+            : roz==='laz' ? (()=>{ throw new Error('LAZ (skompresowany) nie jest obsługiwany. Wyeksportuj LAS, PLY albo OBJ.'); })()
+            : (()=>{ throw new Error('Nieobsługiwany plik. Użyj PLY, OBJ albo LAS.'); })();
+    S.dane = d; S.nazwa = f.name; S.os = roz==='las' ? 'z' : 'y'; S.obrot = 0;
+    $('os').value = S.os; $('obrot').value = 0; $('obrotTxt').textContent = '0°';
+    $('praca').classList.remove('hid');
+    przelicz(true); rozmiar(); dopasuj();
+    $('info').textContent = f.name + ': ' + d.nOrig.toLocaleString('pl-PL') + ' punktów' + (d.nOrig > d.xyz.length/3 ? ' (użyto ' + (d.xyz.length/3).toLocaleString('pl-PL') + ')' : '');
+    try { obrysAuto(); } catch(err){ S.obrys = []; blad(err.message); }
+    rysuj(); wynik();
+  });
+  if ($('blad').textContent && !S.siatka) $('info').textContent = '';
+  e.target.value = '';
+});
+$('os').addEventListener('change', () => bezpiecznie(() => { S.os = $('os').value; przelicz(true); dopasuj(); try { obrysAuto(); } catch(err){ S.obrys=[]; blad(err.message); } rysuj(); wynik(); }));
+$('obrot').addEventListener('input', () => { $('obrotTxt').textContent = $('obrot').value + '°'; });
+$('obrot').addEventListener('change', () => bezpiecznie(() => { S.obrot = +$('obrot').value; przelicz(false); dopasuj(); try { obrysAuto(); } catch(err){ S.obrys=[]; blad(err.message); } rysuj(); wynik(); }));
+for (const id of ['gOd','gDo']) $(id).addEventListener('change', () => bezpiecznie(() => {
+  let a = +$('gOd').value, b = +$('gDo').value; if (a > b-10){ if (id==='gOd') a = b-10; else b = a+10; $('gOd').value=a; $('gDo').value=b; }
+  S.gOd = S.wMin + (S.wMax-S.wMin)*a/1000; S.gDo = S.wMin + (S.wMax-S.wMin)*b/1000;
+  zbudujSiatke(); try { obrysAuto(); } catch(err){ S.obrys=[]; blad(err.message); } rysuj(); wynik();
+}));
+$('detGleb').addEventListener('toggle', () => { if (S.siatka) rysujGore(); });
+$('bAuto').addEventListener('click', () => bezpiecznie(() => { obrysAuto(); rysuj(); wynik(); }));
+$('bReczny').addEventListener('click', () => {
+  if (!S.reczny){ S.reczny = true; S.obrys = []; $('bReczny').textContent = 'Zakończ obrys'; $('bReczny').classList.add('on');
+    $('pomoc').textContent = 'Stukaj kolejne narożniki czoła stosu (z ziemią na dole), potem „Zakończ obrys”. Jeden palec przesuwa widok.'; }
+  else { if (S.obrys.length < 3){ blad('Obrys musi mieć co najmniej 3 punkty.'); return; }
+    S.reczny = false; $('bReczny').textContent = 'Rysuj ręcznie'; $('bReczny').classList.remove('on'); blad('');
+    $('pomoc').textContent = 'Przeciągnij punkt obrysu, żeby go przesunąć. Stuknij przy krawędzi, żeby dodać punkt. Stuknij dwa razy w punkt, żeby go usunąć.'; }
+  rysuj(); wynik();
+});
+$('bDopasuj').addEventListener('click', dopasuj);
+for (const id of ['dl','prz']) $(id).addEventListener('input', wynik);
+try { $('dl').value = localStorage.getItem('stos-dl') || ''; $('prz').value = localStorage.getItem('stos-prz') || ''; } catch(e){}
+addEventListener('resize', () => { if (S.siatka){ rozmiar(); rysujGore(); } });
+matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', rysuj);
+
+if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(e => console.warn('sw', e));
+</script>
+</body></html>
