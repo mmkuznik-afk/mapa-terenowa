@@ -56,6 +56,7 @@ details summary{cursor:pointer;font-weight:600}
       <li>Eksportuj chmurę punktów (albo siatkę) w metrach: PLY, OBJ lub LAS (nie LAZ). ZIP z aplikacji (np. UGScan) wczytuj od razu, bez rozpakowywania.</li>
       <li>Wczytaj plik tutaj. Sprawdź oś pionową i obrys, wpisz długość wałków i przelicznik. Obrys automatyczny zaczyna się od spodu wałków: legary i prześwit pod stosem są pomijane.</li>
       <li>Na początku porównaj kilkanaście stosów z pomiarem taśmą, zanim zaczniesz ufać wynikom.</li>
+      <li>Stos, z którym program sobie nie radzi: „Zapisz skan do sprawdzenia” robi mały ZIP (kilka MB) z samym stosem i opisem; wyślij go mailem.</li>
     </ol>
   </details>
 </div>
@@ -71,6 +72,7 @@ details summary{cursor:pointer;font-weight:600}
       <button class="btn" id="bAuto">Obrys automatyczny</button>
       <button class="btn" id="bReczny">Rysuj ręcznie</button>
       <button class="btn" id="bDopasuj">Dopasuj widok</button>
+      <button class="btn" id="bZapisz">Zapisz skan do sprawdzenia</button>
     </div>
     <p class="nota" id="pomoc">Przeciągnij punkt obrysu, żeby go przesunąć. Stuknij przy krawędzi, żeby dodać punkt. Stuknij dwa razy w punkt, żeby go usunąć. Jeden palec przesuwa widok, dwa palce przybliżają. Siatka co 0,5 m.</p>
   </div>
@@ -107,7 +109,7 @@ details summary{cursor:pointer;font-weight:600}
 'use strict';
 const $ = id => document.getElementById(id);
 // Numer wersji: zmieniaj razem z CACHE w sw.js (pomiar-stosu-vN), wtedy na iPadzie widać, która wersja jest wczytana.
-const WERSJA = 'v5 · 12.11.2026';
+const WERSJA = 'v6 · 12.11.2026';
 $('wersja').textContent = 'Wersja ' + WERSJA + '.';
 const CELL = 0.02;          // komórka widoku z przodu: 2 cm
 const MAX_PKT = 800000;     // więcej punktów nie poprawia pola, a spowalnia iPada
@@ -721,7 +723,7 @@ $('plik').addEventListener('change', async e => {
     const d = roz==='ply' ? czytajPLY(buf) : roz==='obj' ? czytajOBJ(buf) : roz==='las' ? czytajLAS(buf)
             : roz==='laz' ? (()=>{ throw new Error('LAZ (skompresowany) nie jest obsługiwany. Wyeksportuj LAS, PLY albo OBJ.'); })()
             : (()=>{ throw new Error('Nieobsługiwany plik. Użyj PLY, OBJ, LAS albo ZIP z jednym z nich.'); })();
-    S.dane = d; S.nazwa = nazwa; S.os = roz==='las' ? 'z' : 'y'; S.obrot = 0;
+    S.dane = d; S.nazwa = nazwa; gotowy = null; $('bZapisz').textContent = ZAPISZ; $('bZapisz').classList.remove('main'); S.os = roz==='las' ? 'z' : 'y'; S.obrot = 0;
     $('os').value = S.os; $('obrot').value = 0; $('obrotTxt').textContent = '0°';
     $('praca').classList.remove('hid');
     przelicz(true); rozmiar(); dopasuj();
@@ -751,6 +753,95 @@ $('bReczny').addEventListener('click', () => {
   rysuj(); wynik();
 });
 $('bDopasuj').addEventListener('click', dopasuj);
+
+// ---------- zapis skanu do sprawdzenia ----------
+// Mały ZIP (kilka MB) do wysłania mailem: punkty z zakresu głębokości (sam stos i ziemia przed nim),
+// w oryginalnych współrzędnych, plus opis.txt z ustawieniami, wynikiem i obrysem.
+const CRC = (() => { const t = new Uint32Array(256); for (let n=0;n<256;n++){ let c=n; for (let k=0;k<8;k++) c = c&1 ? 0xEDB88320^(c>>>1) : c>>>1; t[n]=c>>>0; } return t; })();
+function crc32(b){ let c = 0xFFFFFFFF; for (let i=0;i<b.length;i++) c = CRC[(c^b[i])&255]^(c>>>8); return (c^0xFFFFFFFF)>>>0; }
+async function spakuj(dane){
+  if (typeof CompressionStream === 'undefined') return null;
+  try {
+    const r = new Blob([dane]).stream().pipeThrough(new CompressionStream('deflate-raw')).getReader();
+    const kaw = []; let dl = 0;
+    for(;;){ const {done, value} = await r.read(); if (done) break; kaw.push(value); dl += value.length; }
+    const out = new Uint8Array(dl); let p = 0; for (const k of kaw){ out.set(k, p); p += k.length; }
+    return out;
+  } catch(e){ return null; }
+}
+async function zrobZip(pliki){   // pliki: [{nazwa, dane:Uint8Array}]
+  const te = new TextEncoder(), czesci = [], spis = []; let off = 0;
+  const d = new Date(), czas = (d.getHours()<<11)|(d.getMinutes()<<5)|(d.getSeconds()>>1), data = ((d.getFullYear()-1980)<<9)|((d.getMonth()+1)<<5)|d.getDate();
+  for (const f of pliki){
+    const nazwa = te.encode(f.nazwa), crc = crc32(f.dane), sp = await spakuj(f.dane);
+    const metoda = sp && sp.length < f.dane.length ? 8 : 0, tresc = metoda ? sp : f.dane;
+    const h = new DataView(new ArrayBuffer(30));
+    h.setUint32(0,0x04034b50,true); h.setUint16(4,20,true); h.setUint16(8,metoda,true); h.setUint16(10,czas,true); h.setUint16(12,data,true);
+    h.setUint32(14,crc,true); h.setUint32(18,tresc.length,true); h.setUint32(22,f.dane.length,true); h.setUint16(26,nazwa.length,true);
+    czesci.push(new Uint8Array(h.buffer), nazwa, tresc);
+    const c = new DataView(new ArrayBuffer(46));
+    c.setUint32(0,0x02014b50,true); c.setUint16(4,20,true); c.setUint16(6,20,true); c.setUint16(10,metoda,true); c.setUint16(12,czas,true); c.setUint16(14,data,true);
+    c.setUint32(16,crc,true); c.setUint32(20,tresc.length,true); c.setUint32(24,f.dane.length,true); c.setUint16(28,nazwa.length,true); c.setUint32(42,off,true);
+    spis.push(new Uint8Array(c.buffer), nazwa);
+    off += 30 + nazwa.length + tresc.length;
+  }
+  const dlSpisu = spis.reduce((s,x)=>s+x.length,0), e = new DataView(new ArrayBuffer(22));
+  e.setUint32(0,0x06054b50,true); e.setUint16(8,pliki.length,true); e.setUint16(10,pliki.length,true); e.setUint32(12,dlSpisu,true); e.setUint32(16,off,true);
+  return new Blob([...czesci, ...spis, new Uint8Array(e.buffer)], {type:'application/zip'});
+}
+async function zapiszSkan(){
+  if (!S.siatka) return;
+  const MAX = 500000, xyz = S.dane.xyz, rgb = S.dane.rgb, n = S.n;
+  const idx = []; for (let i=0;i<n;i++) if (S.w[i] >= S.gOd && S.w[i] <= S.gDo) idx.push(i);
+  const krok = Math.max(1, Math.ceil(idx.length/MAX)), m = Math.ceil(idx.length/krok);
+  const nagl = 'ply\nformat binary_little_endian 1.0\ncomment Pomiar stosu ' + WERSJA + '\nelement vertex ' + m +
+    '\nproperty float x\nproperty float y\nproperty float z\n' + (rgb ? 'property uchar red\nproperty uchar green\nproperty uchar blue\n' : '') + 'end_header\n';
+  const nb = new TextEncoder().encode(nagl), rek = rgb ? 15 : 12;
+  const ply = new Uint8Array(nb.length + m*rek), dv = new DataView(ply.buffer); ply.set(nb);
+  let o = nb.length;
+  for (let j=0;j<idx.length;j+=krok){ const i = idx[j];
+    dv.setFloat32(o, xyz[i*3], true); dv.setFloat32(o+4, xyz[i*3+1], true); dv.setFloat32(o+8, xyz[i*3+2], true);
+    if (rgb){ ply[o+12]=rgb[i*3]; ply[o+13]=rgb[i*3+1]; ply[o+14]=rgb[i*3+2]; }
+    o += rek; }
+  const t = id => $(id).textContent;
+  const opis = [
+    'Pomiar stosu ' + WERSJA, 'Skan: ' + (S.nazwa||'') + ', punktów w pliku: ' + S.dane.nOrig + ', użyto: ' + n + ', zapisano: ' + m,
+    'Oś pionowa: ' + S.os + ', obrót: ' + S.obrot + '°, kąt czoła: ' + (S.kat*180/Math.PI).toFixed(2) + '°',
+    'Zakres głębokości: ' + S.gOd.toFixed(3) + ' … ' + S.gDo.toFixed(3) + ' m, czoło: ' + S.wCzolo.toFixed(3) + ' m',
+    'Długość wałków: ' + $('dl').value + ', przelicznik: ' + $('prz').value,
+    'Pole czoła: ' + t('rPole') + ' m², szerokość: ' + t('rSzer') + ' m, wysokość: ' + t('rWys') + ' m, ' + t('rMp') + ' mp, ' + t('rM3') + ' m³',
+    'Obrys: ' + (S.obrysAuto ? 'automatyczny' : 'poprawiany ręcznie') + '. ' + t('rLeg'),
+    'Punkty obrysu (wzdłuż stosu, wysokość) [m]:', ...S.obrys.map(q => q[0].toFixed(3) + ' ' + q[1].toFixed(3))
+  ].join('\n') + '\n';
+  const zip = await zrobZip([{nazwa:'PointCloud.ply', dane:ply}, {nazwa:'opis.txt', dane:new TextEncoder().encode(opis)}]);
+  const baza = (S.nazwa||'skan').replace(/\.[^.]*$/, '').replace(/[^\w.-]+/g,'_');
+  return new File([zip], 'stos_' + baza + '_' + new Date().toISOString().slice(0,16).replace(/[-:T]/g,'') + '.zip', {type:'application/zip'});
+}
+// Dwa stuknięcia: pierwsze przygotowuje plik (kilka sekund), drugie od razu otwiera „Udostępnij”.
+// Safari pozwala otworzyć okno udostępniania tylko zaraz po stuknięciu, nie po długim liczeniu.
+let gotowy = null;
+const ZAPISZ = 'Zapisz skan do sprawdzenia';
+function wyslij(plik){
+  if (navigator.canShare && navigator.canShare({files:[plik]}))
+    return navigator.share({files:[plik], title:'Skan stosu'}).catch(e => { if (e.name !== 'AbortError') throw e; });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(plik); a.download = plik.name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+  return Promise.resolve();
+}
+$('bZapisz').addEventListener('click', async () => {
+  const b = $('bZapisz'); blad('');
+  if (gotowy){
+    const plik = gotowy; gotowy = null; b.textContent = ZAPISZ; b.classList.remove('main');
+    try { await wyslij(plik); } catch(err){ console.error(err); blad('Nie udało się udostępnić pliku: ' + (err.message || err)); }
+    return;
+  }
+  b.disabled = true; b.textContent = 'Przygotowuję…';
+  try {
+    gotowy = await zapiszSkan();
+    b.textContent = 'Wyślij plik (' + (gotowy.size/1048576).toLocaleString('pl-PL',{maximumFractionDigits:1}) + ' MB)'; b.classList.add('main');
+  } catch(err){ console.error(err); blad('Nie udało się zapisać skanu: ' + (err.message || err)); b.textContent = ZAPISZ; }
+  b.disabled = false;
+});
 for (const id of ['dl','prz']) $(id).addEventListener('input', wynik);
 try { $('dl').value = localStorage.getItem('stos-dl') || ''; $('prz').value = localStorage.getItem('stos-prz') || ''; } catch(e){}
 addEventListener('resize', () => { if (S.siatka){ rozmiar(); rysujGore(); } });
