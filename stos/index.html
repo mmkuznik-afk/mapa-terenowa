@@ -6,7 +6,7 @@
 <link rel="manifest" href="manifest.webmanifest"><link rel="icon" href="../ikona-192.png"><link rel="apple-touch-icon" href="../ikona-192.png">
 <!--
   Pomiar stosu drewna ze skanu LiDAR (iPad Pro). Szacunek do kontroli, NIE do odbioru drewna.
-  Etap 1: skan czoła stosu dowolną aplikacją 3D, eksport chmury punktów w metrach (PLY, OBJ albo LAS).
+  Etap 1: skan czoła stosu dowolną aplikacją 3D, eksport chmury punktów w metrach (PLY, OBJ albo LAS, także spakowane w ZIP, np. z UGScan).
   Etap 2: ta strona: wczytuje plik, pokazuje stos z przodu, proponuje obrys czoła (do poprawienia palcem),
   liczy pole czoła × długość wałków = mp, mp × przelicznik = m³. Działa offline, nic nie wysyła i nic nie zapisuje
   (poza ostatnio wpisaną długością i przelicznikiem).
@@ -46,14 +46,14 @@ details summary{cursor:pointer;font-weight:600}
   <h1>Pomiar stosu ze skanu</h1>
   <p class="nota">Szacunek do kontroli, nie do odbioru. Wynik zależy głównie od przelicznika, który wpisujesz.</p>
   <div class="row">
-    <label class="btn main">Wczytaj skan (PLY, OBJ, LAS)<input id="plik" type="file" accept=".ply,.obj,.las,application/octet-stream" class="hid"></label>
+    <label class="btn main">Wczytaj skan (PLY, OBJ, LAS, ZIP)<input id="plik" type="file" accept=".ply,.obj,.las,.zip,application/zip,application/octet-stream" class="hid"></label>
     <span id="info" class="nota"></span>
   </div>
   <div id="blad" class="err hid"></div>
   <details class="nota" style="margin-top:8px"><summary>Jak skanować</summary>
     <ol>
       <li>Skanuj samo czoło stosu, idąc powoli wzdłuż niego w odległości 1,5–3 m. Złap też kawałek ziemi przed stosem i oba końce stosu.</li>
-      <li>Eksportuj chmurę punktów (albo siatkę) w metrach: PLY, OBJ lub LAS (nie LAZ).</li>
+      <li>Eksportuj chmurę punktów (albo siatkę) w metrach: PLY, OBJ lub LAS (nie LAZ). ZIP z aplikacji (np. UGScan) wczytuj od razu, bez rozpakowywania.</li>
       <li>Wczytaj plik tutaj. Sprawdź oś pionową i obrys, wpisz długość wałków i przelicznik.</li>
       <li>Na początku porównaj kilkanaście stosów z pomiarem taśmą, zanim zaczniesz ufać wynikom.</li>
     </ol>
@@ -557,21 +557,56 @@ cv.addEventListener('wheel', e => { e.preventDefault(); const [x,y] = pozycja(e)
 
 // ---------- przyciski ----------
 function bezpiecznie(f){ try { blad(''); f(); } catch(err){ console.error(err); blad(err.message || String(err)); } }
+// ZIP (np. eksport UGScan): wyjmuje pierwszy plik PLY, potem LAS, potem OBJ. Deflate rozpakowuje sama przeglądarka.
+async function zZipa(buf){
+  const b = new Uint8Array(buf), dv = new DataView(buf);
+  let e = -1;
+  for (let i = b.length - 22; i >= Math.max(0, b.length - 70000); i--) if (dv.getUint32(i, true) === 0x06054b50){ e = i; break; }
+  if (e < 0) throw new Error('To nie jest poprawny plik ZIP.');
+  const n = dv.getUint16(e + 10, true); let o = dv.getUint32(e + 16, true);
+  if (o === 0xFFFFFFFF) throw new Error('Ten ZIP jest za duży (ZIP64). Rozpakuj go w aplikacji Pliki i wczytaj sam plik PLY.');
+  const td = new TextDecoder(), wpisy = [];
+  for (let k = 0; k < n; k++){
+    const m = dv.getUint16(o + 10, true), cs = dv.getUint32(o + 20, true), nl = dv.getUint16(o + 28, true),
+          el = dv.getUint16(o + 30, true), cl = dv.getUint16(o + 32, true), lo = dv.getUint32(o + 42, true);
+    const name = td.decode(b.subarray(o + 46, o + 46 + nl));
+    if (!/(^|\/)(__MACOSX|\.)/.test(name)) wpisy.push({name, m, cs, lo});
+    o += 46 + nl + el + cl;
+  }
+  let w = null;
+  for (const roz of ['ply','las','obj']){ w = wpisy.find(x => x.name.toLowerCase().endsWith('.'+roz)); if (w) break; }
+  if (!w) throw new Error('W tym ZIP-ie nie ma pliku PLY, LAS ani OBJ.' + (wpisy.length ? ' Są: ' + wpisy.slice(0,5).map(x=>x.name).join(', ') : ''));
+  const start = w.lo + 30 + dv.getUint16(w.lo + 26, true) + dv.getUint16(w.lo + 28, true);
+  const dane = b.subarray(start, start + w.cs);
+  let wynik;
+  if (w.m === 0) wynik = dane.slice().buffer;
+  else if (w.m === 8){
+    if (typeof DecompressionStream === 'undefined') throw new Error('Ta przeglądarka nie rozpakuje ZIP-a. Rozpakuj go w aplikacji Pliki i wczytaj plik PLY.');
+    wynik = await new Response(new Blob([dane]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer();
+  } else throw new Error('Nieznana metoda kompresji w ZIP-ie (' + w.m + '). Rozpakuj go w aplikacji Pliki.');
+  return {buf: wynik, nazwa: w.name.split('/').pop()};
+}
+
 $('plik').addEventListener('change', async e => {
   const f = e.target.files[0]; if (!f) return;
-  $('info').textContent = 'Wczytuję ' + f.name + '…';
+  $('info').textContent = 'Wczytuję ' + f.name + '…'; blad('');
   await new Promise(r=>setTimeout(r,30));
-  const buf = await f.arrayBuffer();
+  let buf, nazwa = f.name;
+  try {
+    buf = await f.arrayBuffer();
+    if (nazwa.toLowerCase().endsWith('.zip')){ const z = await zZipa(buf); buf = z.buf; nazwa = z.nazwa; }
+  } catch(err){ console.error(err); blad(err.message || String(err)); $('info').textContent = ''; e.target.value = ''; return; }
+  const opis = nazwa === f.name ? f.name : f.name + ' → ' + nazwa;
   bezpiecznie(() => {
-    const roz = f.name.toLowerCase().split('.').pop();
+    const roz = nazwa.toLowerCase().split('.').pop();
     const d = roz==='ply' ? czytajPLY(buf) : roz==='obj' ? czytajOBJ(buf) : roz==='las' ? czytajLAS(buf)
             : roz==='laz' ? (()=>{ throw new Error('LAZ (skompresowany) nie jest obsługiwany. Wyeksportuj LAS, PLY albo OBJ.'); })()
-            : (()=>{ throw new Error('Nieobsługiwany plik. Użyj PLY, OBJ albo LAS.'); })();
-    S.dane = d; S.nazwa = f.name; S.os = roz==='las' ? 'z' : 'y'; S.obrot = 0;
+            : (()=>{ throw new Error('Nieobsługiwany plik. Użyj PLY, OBJ, LAS albo ZIP z jednym z nich.'); })();
+    S.dane = d; S.nazwa = nazwa; S.os = roz==='las' ? 'z' : 'y'; S.obrot = 0;
     $('os').value = S.os; $('obrot').value = 0; $('obrotTxt').textContent = '0°';
     $('praca').classList.remove('hid');
     przelicz(true); rozmiar(); dopasuj();
-    $('info').textContent = f.name + ': ' + d.nOrig.toLocaleString('pl-PL') + ' punktów' + (d.nOrig > d.xyz.length/3 ? ' (użyto ' + (d.xyz.length/3).toLocaleString('pl-PL') + ')' : '');
+    $('info').textContent = opis + ': ' + d.nOrig.toLocaleString('pl-PL') + ' punktów' + (d.nOrig > d.xyz.length/3 ? ' (użyto ' + (d.xyz.length/3).toLocaleString('pl-PL') + ')' : '');
     try { obrysAuto(); } catch(err){ S.obrys = []; blad(err.message); }
     rysuj(); wynik();
   });
