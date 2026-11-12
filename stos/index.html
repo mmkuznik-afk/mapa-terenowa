@@ -109,7 +109,7 @@ details summary{cursor:pointer;font-weight:600}
 'use strict';
 const $ = id => document.getElementById(id);
 // Numer wersji: zmieniaj razem z CACHE w sw.js (pomiar-stosu-vN), wtedy na iPadzie widać, która wersja jest wczytana.
-const WERSJA = 'v6 · 12.11.2026';
+const WERSJA = 'v7 · 12.11.2026';
 $('wersja').textContent = 'Wersja ' + WERSJA + '.';
 const CELL = 0.02;          // komórka widoku z przodu: 2 cm
 const MAX_PKT = 800000;     // więcej punktów nie poprawia pola, a spowalnia iPada
@@ -472,18 +472,36 @@ function obrysAuto(){
   if (L>=0 && R-L > bR-bL){ bL=L; bR=R; }
   if (bL<0 || (bR-bL+1)*CELL < 0.3) throw new Error('Nie znalazłem ściany wałków. Sprawdź oś pionową albo narysuj obrys ręcznie.');
   liczSpod(bL, bR);
+  // Góra. iPad na krawędzi stosu na tle nieba dorabia rzadką „mgiełkę” fałszywych punktów (kolor nieba),
+  // ciągnącą się kilkanaście cm nad wałkami. Dlatego góra to nie najwyższy punkt, tylko wysokość,
+  // do której w oknie ±25 cm zajęta jest co najmniej połowa tego, co typowo w ścianie.
+  // Przy postrzępionej górze daje to wysokość średnią, a nie wierzchołki pojedynczych wałków.
+  const OKG = 12, pre = new Int32Array(ny*(nx+1));
+  for (let y=0;y<ny;y++){ let s=0; for (let x=0;x<nx;x++){ s += zaj[y*nx+x]; pre[y*(nx+1)+x+1] = s; } }
+  const fW = (y, a, b) => (pre[y*(nx+1)+b+1] - pre[y*(nx+1)+a]) / (b-a+1);
+  const goraW = new Int32Array(nx).fill(-1);
+  for (let x=bL;x<=bR;x++){
+    if (!dobra[x]) continue;
+    const a = Math.max(bL, x-OKG), b = Math.min(bR, x+OKG);
+    let yMax = 0; for (let j=a;j<=b;j++) if (gW[j] > yMax) yMax = gW[j];
+    const ya = spodW[x] + Math.round(0.3*(gW[x]-spodW[x])), yb = spodW[x] + Math.round(0.7*(gW[x]-spodW[x]));
+    const sf = []; for (let y=ya;y<=yb;y++) sf.push(fW(y,a,b)); sf.sort((p,q)=>p-q);
+    const prog = 0.5 * (sf.length ? sf[sf.length>>1] : 1);
+    let y = yMax; while (y > spodW[x] && fW(y,a,b) < prog) y--;
+    goraW[x] = y;
+  }
   for (let x=bL;x<=bR;x++) if (spodW[x] < 0) dobra[x] = 0;
-  // mediany: góra z 9 kolumn (18 cm, pojedyncze wystające wałki nie zawyżają), spód z 25 kolumn (50 cm)
+  // mediany: góra z 9 kolumn (18 cm), spód z 25 kolumn (50 cm)
   const med = (x, r, fn) => { const a=[]; for (let j=x-r;j<=x+r;j++) if (j>=bL&&j<=bR&&dobra[j]) a.push(fn(j)); a.sort((p,q)=>p-q); return a.length ? a[a.length>>1] : NaN; };
   const ug = x => u0 + (x+0.5)*CELL, vw = y => v0 + (y+0.5)*CELL;
   const gorne = [], dolne = []; let legSum = 0, legN = 0;
   for (let x=bL;x<=bR;x++){
-    const g = med(x, 4, j=>vw(gW[j])), d = med(x, 12, j=>vw(spodW[j]) - CELL/2);
+    const g = med(x, 4, j=>vw(goraW[j]) + CELL/2), d = med(x, 12, j=>vw(spodW[j]) - CELL/2);
     if (!isFinite(g) || !isFinite(d)) continue;
     gorne.push([ug(x), g]); dolne.push([ug(x), d]);
     legSum += d - dol[x]; legN++;
   }
-  const g2 = douglas(gorne, 0.03), d2 = douglas(dolne, 0.03);
+  const g2 = douglas(gorne, 0.05), d2 = douglas(dolne, 0.05);   // 5 cm: mniej punktów do przeciągania, błąd pola znikomy
   const lewy = u0 + bL*CELL, prawy = u0 + (bR+1)*CELL;
   g2[0][0] = lewy; g2[g2.length-1][0] = prawy; d2[0][0] = lewy; d2[d2.length-1][0] = prawy;
   S.obrys = d2.concat(g2.reverse());
@@ -557,7 +575,7 @@ function rysuj(){
   if (!S.reczny) ctx.closePath();
   ctx.fillStyle = 'rgba(232,89,12,.18)'; if (!S.reczny) ctx.fill();
   ctx.strokeStyle = '#e8590c'; ctx.lineWidth = 2.5; ctx.stroke();
-  for (const q of p){ const [x,y]=naEkran(q[0],q[1]); ctx.beginPath(); ctx.arc(x,y,7,0,7); ctx.fillStyle='#fff'; ctx.fill(); ctx.lineWidth=2.5; ctx.strokeStyle='#e8590c'; ctx.stroke(); }
+  for (const q of p){ const [x,y]=naEkran(q[0],q[1]); ctx.beginPath(); ctx.arc(x,y,5,0,7); ctx.fillStyle='#fff'; ctx.fill(); ctx.lineWidth=2; ctx.strokeStyle='#e8590c'; ctx.stroke(); }
 }
 
 // widok z góry z paskiem głębokości
