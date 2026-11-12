@@ -559,16 +559,31 @@ cv.addEventListener('wheel', e => { e.preventDefault(); const [x,y] = pozycja(e)
 function bezpiecznie(f){ try { blad(''); f(); } catch(err){ console.error(err); blad(err.message || String(err)); } }
 // ZIP (np. eksport UGScan): wyjmuje pierwszy plik PLY, potem LAS, potem OBJ. Deflate rozpakowuje sama przeglądarka.
 async function zZipa(buf){
-  const b = new Uint8Array(buf), dv = new DataView(buf);
+  const b = new Uint8Array(buf), dv = new DataView(buf), N = b.length;
+  const u64 = o => dv.getUint32(o, true) + dv.getUint32(o + 4, true) * 4294967296;
   let e = -1;
-  for (let i = b.length - 22; i >= Math.max(0, b.length - 70000); i--) if (dv.getUint32(i, true) === 0x06054b50){ e = i; break; }
+  for (let i = N - 22; i >= Math.max(0, N - 70000); i--) if (dv.getUint32(i, true) === 0x06054b50){ e = i; break; }
   if (e < 0) throw new Error('To nie jest poprawny plik ZIP.');
-  const n = dv.getUint16(e + 10, true); let o = dv.getUint32(e + 16, true);
-  if (o === 0xFFFFFFFF) throw new Error('Ten ZIP jest za duży (ZIP64). Rozpakuj go w aplikacji Pliki i wczytaj sam plik PLY.');
+  let n = dv.getUint16(e + 10, true), o = dv.getUint32(e + 16, true);
+  // ZIP64: liczba wpisów i początek spisu są w osobnym rekordzie (lokalizator tuż przed końcem spisu)
+  if ((n === 0xFFFF || o === 0xFFFFFFFF) && e >= 20 && dv.getUint32(e - 20, true) === 0x07064b50){
+    const z = u64(e - 12);
+    if (z + 56 <= N && dv.getUint32(z, true) === 0x06064b50){ n = u64(z + 32); o = u64(z + 48); }
+  }
   const td = new TextDecoder(), wpisy = [];
-  for (let k = 0; k < n; k++){
-    const m = dv.getUint16(o + 10, true), cs = dv.getUint32(o + 20, true), nl = dv.getUint16(o + 28, true),
-          el = dv.getUint16(o + 30, true), cl = dv.getUint16(o + 32, true), lo = dv.getUint32(o + 42, true);
+  for (let k = 0; k < n && o + 46 <= N && dv.getUint32(o, true) === 0x02014b50; k++){
+    const m = dv.getUint16(o + 10, true), nl = dv.getUint16(o + 28, true), el = dv.getUint16(o + 30, true), cl = dv.getUint16(o + 32, true);
+    let us = dv.getUint32(o + 24, true), cs = dv.getUint32(o + 20, true), lo = dv.getUint32(o + 42, true);
+    // ZIP64 w polu dodatkowym (0x0001): po kolei rozmiar po rozpakowaniu, rozmiar spakowany, położenie, tylko te z 0xFFFFFFFF
+    let x = o + 46 + nl; const xk = x + el;
+    while (x + 4 <= xk){
+      const id = dv.getUint16(x, true), dl = dv.getUint16(x + 2, true);
+      if (id === 0x0001){ let q = x + 4;
+        if (us === 0xFFFFFFFF){ us = u64(q); q += 8; }
+        if (cs === 0xFFFFFFFF){ cs = u64(q); q += 8; }
+        if (lo === 0xFFFFFFFF){ lo = u64(q); q += 8; } }
+      x += 4 + dl;
+    }
     const name = td.decode(b.subarray(o + 46, o + 46 + nl));
     if (!/(^|\/)(__MACOSX|\.)/.test(name)) wpisy.push({name, m, cs, lo});
     o += 46 + nl + el + cl;
@@ -576,15 +591,40 @@ async function zZipa(buf){
   let w = null;
   for (const roz of ['ply','las','obj']){ w = wpisy.find(x => x.name.toLowerCase().endsWith('.'+roz)); if (w) break; }
   if (!w) throw new Error('W tym ZIP-ie nie ma pliku PLY, LAS ani OBJ.' + (wpisy.length ? ' Są: ' + wpisy.slice(0,5).map(x=>x.name).join(', ') : ''));
+  if (w.lo + 30 > N || dv.getUint32(w.lo, true) !== 0x04034b50) throw new Error('Uszkodzony ZIP (zły nagłówek pliku ' + w.name + ').');
   const start = w.lo + 30 + dv.getUint16(w.lo + 26, true) + dv.getUint16(w.lo + 28, true);
-  const dane = b.subarray(start, start + w.cs);
+  const dane = b.subarray(start, Math.min(N, start + w.cs));
   let wynik;
   if (w.m === 0) wynik = dane.slice().buffer;
   else if (w.m === 8){
     if (typeof DecompressionStream === 'undefined') throw new Error('Ta przeglądarka nie rozpakuje ZIP-a. Rozpakuj go w aplikacji Pliki i wczytaj plik PLY.');
-    wynik = await new Response(new Blob([dane]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer();
+    wynik = await rozpakuj(dane);
   } else throw new Error('Nieznana metoda kompresji w ZIP-ie (' + w.m + '). Rozpakuj go w aplikacji Pliki.');
   return {buf: wynik, nazwa: w.name.split('/').pop()};
+}
+// Deflate przez przeglądarkę. Gdy za końcem danych są nadmiarowe bajty (Safari: „Extra bytes past the end”),
+// szuka dokładnego końca strumienia: za krótko = błąd „niepełne dane”, za długo = błąd „nadmiarowe bajty”.
+const zaDuzo = err => /extra|junk|past the end|trailing/i.test(String(err && err.message));
+async function inflacja(dane){   // przez czytnik, nie Response: Response w Chrome zamienia błąd na „Failed to fetch”
+  const r = new Blob([dane]).stream().pipeThrough(new DecompressionStream('deflate-raw')).getReader();
+  const kaw = []; let dl = 0;
+  for(;;){ const {done, value} = await r.read(); if (done) break; kaw.push(value); dl += value.length; }
+  const out = new Uint8Array(dl); let p = 0; for (const k of kaw){ out.set(k, p); p += k.length; }
+  return out.buffer;
+}
+async function rozpakuj(dane){
+  try { return await inflacja(dane); }
+  catch(err){
+    if (!zaDuzo(err)) throw err;
+    let lo = 1, hi = dane.length - 1, wynik = null;
+    while (lo <= hi){
+      const m = (lo + hi) >> 1;
+      try { wynik = await inflacja(dane.subarray(0, m)); break; }
+      catch(e2){ if (zaDuzo(e2)) hi = m - 1; else lo = m + 1; }
+    }
+    if (!wynik) throw new Error('Nie udało się rozpakować ZIP-a (' + err.message + '). Rozpakuj go w aplikacji Pliki i wczytaj plik PLY.');
+    return wynik;
+  }
 }
 
 $('plik').addEventListener('change', async e => {
