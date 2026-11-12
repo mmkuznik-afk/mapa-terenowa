@@ -1,0 +1,781 @@
+<!DOCTYPE html>
+<html lang="pl"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#3B6D11">
+<title>Ładunek na samochodzie</title>
+<link rel="manifest" href="manifest.webmanifest"><link rel="icon" href="../ikona-192.png"><link rel="apple-touch-icon" href="../ikona-192.png">
+<!--
+  Pomiar drewna stosowego na samochodzie ze skanów LiDAR (iPad Pro). Szacunek do kontroli, NIE do odbioru drewna.
+  Wałki wzdłuż samochodu, 4–5 pakietów, każdy pakiet ma 4 kłonice (2 z każdej strony).
+  Dwa skany: lewy i prawy bok. Podłogę i kłonice zaznacza się palcem, wysokość ładunku przy każdej kłonicy
+  program wyznacza sam (od podłogi do wierzchu, tuż obok kłonicy, po stronie pakietu).
+  Wysokości do 1 cm, średnia pakietu z 4 pomiarów do 1 cm, mp pakietu = szerokość × długość wałków × średnia (do 0,01).
+  Działa offline, nic nie wysyła i nic nie zapisuje (poza ostatnio wpisaną długością i szerokością).
+-->
+<style>
+:root{--bg:#e9e7e0;--card:#fbfaf6;--ink:#23231f;--mute:#6b6a63;--line:#dcd9ce;--acc:#3B6D11;--acc-bg:#EAF3DE;--on-acc:#fff;--err-bg:#fcebeb;--err:#791f1f;--view:#f3f1ea;--warn-bg:#faeeda;--warn:#633806}
+@media (prefers-color-scheme:dark){:root{color-scheme:dark;--bg:#151514;--card:#232321;--ink:#ecebe5;--mute:#a3a29b;--line:#3a3a36;--acc:#97C459;--acc-bg:#1f3109;--on-acc:#161614;--err-bg:#3b1a1a;--err:#f2b8b8;--view:#1b1b1a;--warn-bg:#3a2a10;--warn:#f5d39a}}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:15px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-tap-highlight-color:transparent;padding:12px 16px calc(24px + env(safe-area-inset-bottom))}
+button,select,input{font:inherit;color:inherit}
+h1{font-size:20px;margin:4px 0 8px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin:0 auto 12px;max-width:1100px}
+.nota{color:var(--mute);font-size:13px;margin:6px 0}
+.err{background:var(--err-bg);color:var(--err);border-radius:8px;padding:8px 12px;margin-top:10px}
+.ostrz{background:var(--warn-bg);color:var(--warn);border-radius:8px;padding:8px 12px;margin-top:8px;font-size:14px}
+.btn{border:1px solid var(--line);background:var(--card);border-radius:10px;padding:9px 14px;cursor:pointer;min-height:42px}
+.btn.main{background:var(--acc);color:var(--on-acc);border-color:var(--acc);font-weight:600}
+.btn.on{background:var(--acc-bg);border-color:var(--acc);font-weight:600}
+.btn:disabled{opacity:.5}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+label.f{display:flex;flex-direction:column;gap:3px;font-size:13px;color:var(--mute)}
+label.f input,label.f select{font-size:17px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);width:140px}
+#widok{position:relative;width:100%;height:min(62vh,560px);background:var(--view);border:1px solid var(--line);border-radius:10px;touch-action:none;-webkit-user-select:none;user-select:none;overflow:hidden}
+#widok canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+.zakl{display:flex;gap:0;border:1px solid var(--line);border-radius:10px;overflow:hidden;width:max-content;max-width:100%}
+.zakl button{border:0;background:var(--card);padding:10px 18px;min-height:44px;cursor:pointer}
+.zakl button.on{background:var(--acc);color:var(--on-acc);font-weight:600}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums;margin-top:8px}
+th,td{padding:7px 8px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+th{font-size:12px;color:var(--mute);font-weight:500}
+tr.suma td{font-weight:700;border-bottom:0;font-size:17px}
+.tab{overflow-x:auto}
+.hid{display:none!important}
+</style></head>
+<body>
+
+<div class="card">
+  <h1>Ładunek na samochodzie</h1>
+  <p class="nota">Szacunek do kontroli, nie do odbioru. Wysokość od podłogi przy kłonicach, jak taśmą. <span id="wersja" style="white-space:nowrap"></span></p>
+  <div class="row">
+    <label class="f">Długość wałków [m]<input id="dl" type="number" inputmode="decimal" step="0.01" min="0" placeholder="np. 2,5"></label>
+    <label class="f">Szerokość ładunku [m]<input id="szer" type="number" inputmode="decimal" step="0.01" min="0" value="2.3"></label>
+  </div>
+  <details class="nota" style="margin-top:8px"><summary>Jak skanować i mierzyć</summary>
+    <ol>
+      <li>Dwa skany: osobno lewy i prawy bok samochodu. Idź powoli wzdłuż, 2–3 m od burty. W kadrze musi być podłoga skrzyni, wszystkie kłonice i wierzch ładunku.</li>
+      <li>Eksportuj chmurę punktów w metrach (PLY, OBJ, LAS albo ZIP, np. z UGScan) i wczytaj ją przy właściwej stronie.</li>
+      <li><b>Podłoga:</b> stuknij „Podłoga” i postaw punkt na krawędzi podłogi na początku i na końcu skrzyni. Przy samochodzie z przyczepą daj osobne punkty dla przyczepy. Dwa szybkie stuknięcia w punkt usuwają go, „Cofnij” usuwa ostatnio dodany.</li>
+      <li><b>Kłonice:</b> stuknij „Kłonice” i stukaj w środek każdej kłonicy. Program łączy je w pakiety po dwie, licząc od kabiny. Gdy kłonice stoją blisko siebie, przybliż widok. Dwa szybkie stuknięcia w kłonicę usuwają ją.</li>
+      <li>Wysokość przy każdej kłonicy program wyznacza sam. Jeśli się nie zgadza, w trybie „Przesuń” przeciągnij jej górny punkt; dwa stuknięcia w ten punkt przywracają wartość programu.</li>
+      <li>Ustaw, z której strony widoku jest kabina, żeby pakiety z obu skanów miały te same numery.</li>
+    </ol>
+  </details>
+</div>
+
+<div class="card">
+  <div class="row">
+    <div class="zakl"><button id="zL" class="on">Lewa strona</button><button id="zP">Prawa strona</button></div>
+    <label class="btn main">Wczytaj skan<input id="plik" type="file" accept=".ply,.obj,.las,.zip,application/zip,application/octet-stream" class="hid"></label>
+    <span id="info" class="nota"></span>
+  </div>
+  <div id="blad" class="err hid"></div>
+  <div id="praca" class="hid">
+    <div class="row" style="margin:10px 0 8px">
+      <label class="f">Oś pionowa<select id="os"><option value="y">Y w górę</option><option value="z">Z w górę</option><option value="-y">Y w dół</option><option value="-z">Z w dół</option></select></label>
+      <label class="f" style="flex:1;min-width:200px">Obrót widoku: <span id="obrotTxt">0°</span><input id="obrot" type="range" min="-90" max="90" step="1" value="0"></label>
+    </div>
+    <div class="row" style="margin-bottom:8px">
+      <button class="btn on" id="tPrzesun">Przesuń</button>
+      <button class="btn" id="tPodloga">Podłoga</button>
+      <button class="btn" id="tKlonice">Kłonice</button>
+      <button class="btn" id="bKabina">Kabina: z lewej</button>
+      <button class="btn" id="bDopasuj">Dopasuj widok</button>
+    </div>
+    <div id="widok"><canvas id="cv"></canvas></div>
+    <p class="nota" id="pomoc"></p>
+    <div class="row">
+      <button class="btn" id="bCofnij">Cofnij</button>
+      <button class="btn" id="bWyczysc">Wyczyść podłogę i kłonice</button>
+      <button class="btn" id="bZapisz">Zapisz skan do sprawdzenia</button>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h1 style="font-size:17px">Wynik</h1>
+  <div id="uwagi"></div>
+  <div class="tab"><table id="tabela"></table></div>
+  <p class="nota">Wysokości do 1 cm, średnia pakietu z jego pomiarów do 1 cm, mp = szerokość × długość wałków × średnia wysokość, do 0,01. Na pierwszych samochodach porównaj z taśmą, zanim zaczniesz ufać wynikom.</p>
+</div>
+
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+// Numer wersji: zmieniaj razem z CACHE w sw.js (ladunek-vN), wtedy na iPadzie widać, która wersja jest wczytana.
+const WERSJA = 'v1 · 12.11.2026';
+$('wersja').textContent = 'Wersja ' + WERSJA + '.';
+const CELL = 0.02;          // komórka widoku z boku: 2 cm
+const MAX_PKT = 800000;     // więcej punktów nie poprawia wyniku, a spowalnia iPada
+const PAS = 0.5;            // pas głębokości wokół burty ładunku: ±0,5 m
+
+// ---------- wczytywanie plików ----------
+function blad(t){ const e=$('blad'); e.textContent=t; e.classList.toggle('hid',!t); }
+
+function czytajPLY(buf){
+  const bajty = new Uint8Array(buf);
+  const limit = Math.min(bajty.length, 65536);
+  let naglowek = '', koniec = -1;
+  const txt = new TextDecoder('latin1').decode(bajty.subarray(0, limit));
+  const k = txt.indexOf('end_header');
+  if (k < 0) throw new Error('To nie wygląda na plik PLY (brak end_header).');
+  let p = k + 'end_header'.length;
+  if (txt[p] === '\r') p++;
+  if (txt[p] === '\n') p++;
+  naglowek = txt.slice(0, k); koniec = p;
+  const linie = naglowek.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+  let format = 'ascii', elementy = [], el = null;
+  for (const l of linie){
+    const t = l.split(/\s+/);
+    if (t[0]==='format') format = t[1];
+    else if (t[0]==='element'){ el = {nazwa:t[1], n:+t[2], props:[]}; elementy.push(el); }
+    else if (t[0]==='property' && el){
+      if (t[1]==='list') el.props.push({lista:true, typN:t[2], typ:t[3], nazwa:t[4]});
+      else el.props.push({typ:t[1], nazwa:t[2]});
+    }
+  }
+  const v = elementy.find(e=>e.nazwa==='vertex');
+  if (!v || !v.n) throw new Error('Plik PLY nie zawiera punktów (vertex).');
+  const ix = v.props.findIndex(q=>q.nazwa==='x'), iy = v.props.findIndex(q=>q.nazwa==='y'), iz = v.props.findIndex(q=>q.nazwa==='z');
+  if (ix<0||iy<0||iz<0) throw new Error('Plik PLY nie ma współrzędnych x, y, z.');
+  const ir = v.props.findIndex(q=>q.nazwa==='red'||q.nazwa==='r'), ig = v.props.findIndex(q=>q.nazwa==='green'||q.nazwa==='g'), ib = v.props.findIndex(q=>q.nazwa==='blue'||q.nazwa==='b');
+  const maKolor = ir>=0 && ig>=0 && ib>=0;
+  const krok = Math.max(1, Math.ceil(v.n / MAX_PKT));
+  const n = Math.ceil(v.n / krok);
+  const xyz = new Float32Array(n*3), rgb = maKolor ? new Uint8Array(n*3) : null;
+  if (format === 'ascii'){
+    const przed = elementy.indexOf(v);
+    if (elementy.slice(0,przed).some(e=>e.n>0)) throw new Error('Nietypowy PLY (punkty nie są pierwsze). Wyeksportuj ponownie.');
+    const tekst = new TextDecoder('latin1').decode(bajty.subarray(koniec));
+    let poz = 0, j = 0;
+    for (let i=0;i<v.n;i++){
+      let nl = tekst.indexOf('\n', poz); if (nl<0) nl = tekst.length;
+      if (i % krok === 0){
+        const t = tekst.slice(poz, nl).trim().split(/\s+/);
+        xyz[j*3]=+t[ix]; xyz[j*3+1]=+t[iy]; xyz[j*3+2]=+t[iz];
+        if (rgb){ const s = v.props[ir].typ.startsWith('f') ? 255 : 1; rgb[j*3]=+t[ir]*s; rgb[j*3+1]=+t[ig]*s; rgb[j*3+2]=+t[ib]*s; }
+        j++;
+      }
+      poz = nl+1;
+    }
+    return {xyz:xyz.subarray(0,j*3), rgb: rgb?rgb.subarray(0,j*3):null, nOrig:v.n};
+  }
+  const le = format === 'binary_little_endian';
+  if (!le && format !== 'binary_big_endian') throw new Error('Nieznany format PLY: '+format);
+  const ROZ = {char:1,uchar:1,int8:1,uint8:1,short:2,ushort:2,int16:2,uint16:2,int:4,uint:4,int32:4,uint32:4,float:4,float32:4,double:8,float64:8};
+  const dv = new DataView(buf);
+  const czytaj = (typ, off) => {
+    switch(typ){
+      case 'char': case 'int8': return dv.getInt8(off);
+      case 'uchar': case 'uint8': return dv.getUint8(off);
+      case 'short': case 'int16': return dv.getInt16(off,le);
+      case 'ushort': case 'uint16': return dv.getUint16(off,le);
+      case 'int': case 'int32': return dv.getInt32(off,le);
+      case 'uint': case 'uint32': return dv.getUint32(off,le);
+      case 'float': case 'float32': return dv.getFloat32(off,le);
+      default: return dv.getFloat64(off,le);
+    }
+  };
+  // przeskocz elementy przed punktami (tylko o stałym rozmiarze)
+  let off = koniec;
+  for (const e of elementy){
+    if (e===v) break;
+    if (e.props.some(q=>q.lista)) throw new Error('Nietypowy PLY (punkty nie są pierwsze). Wyeksportuj ponownie.');
+    off += e.n * e.props.reduce((s,q)=>s+ROZ[q.typ],0);
+  }
+  if (v.props.some(q=>q.lista)) throw new Error('Nietypowy PLY (lista w punktach).');
+  const offs = []; let stride = 0;
+  for (const q of v.props){ offs.push(stride); stride += ROZ[q.typ]; }
+  if (off + v.n*stride > buf.byteLength) throw new Error('Plik PLY jest ucięty.');
+  const kolSkala = maKolor ? (v.props[ir].typ.startsWith('f') ? 255 : (ROZ[v.props[ir].typ]===2 ? 1/257 : 1)) : 1;
+  let j = 0;
+  for (let i=0;i<v.n;i+=krok){
+    const b = off + i*stride;
+    xyz[j*3]=czytaj(v.props[ix].typ,b+offs[ix]); xyz[j*3+1]=czytaj(v.props[iy].typ,b+offs[iy]); xyz[j*3+2]=czytaj(v.props[iz].typ,b+offs[iz]);
+    if (rgb){ rgb[j*3]=czytaj(v.props[ir].typ,b+offs[ir])*kolSkala; rgb[j*3+1]=czytaj(v.props[ig].typ,b+offs[ig])*kolSkala; rgb[j*3+2]=czytaj(v.props[ib].typ,b+offs[ib])*kolSkala; }
+    j++;
+  }
+  return {xyz:xyz.subarray(0,j*3), rgb: rgb?rgb.subarray(0,j*3):null, nOrig:v.n};
+}
+
+function czytajOBJ(buf){
+  const tekst = new TextDecoder('utf-8').decode(buf);
+  const xs = [], cs = [];
+  let poz = 0, maKolor = true;
+  while (poz < tekst.length){
+    let nl = tekst.indexOf('\n', poz); if (nl<0) nl = tekst.length;
+    if (tekst.charCodeAt(poz)===118 && tekst.charCodeAt(poz+1)===32){ // "v "
+      const t = tekst.slice(poz+2, nl).trim().split(/\s+/);
+      xs.push(+t[0], +t[1], +t[2]);
+      if (t.length >= 6){ const s = (+t[3]<=1 && +t[4]<=1 && +t[5]<=1) ? 255 : 1; cs.push(+t[3]*s, +t[4]*s, +t[5]*s); } else maKolor = false;
+    }
+    poz = nl+1;
+  }
+  if (!xs.length) throw new Error('Plik OBJ nie zawiera punktów (linie "v").');
+  const nOrig = xs.length/3, krok = Math.max(1, Math.ceil(nOrig/MAX_PKT)), n = Math.ceil(nOrig/krok);
+  const xyz = new Float32Array(n*3), rgb = maKolor && cs.length===xs.length ? new Uint8Array(n*3) : null;
+  for (let i=0,j=0;i<nOrig;i+=krok,j++){ for (let k=0;k<3;k++){ xyz[j*3+k]=xs[i*3+k]; if (rgb) rgb[j*3+k]=cs[i*3+k]; } }
+  return {xyz, rgb, nOrig};
+}
+
+function czytajLAS(buf){
+  const dv = new DataView(buf);
+  const sig = String.fromCharCode(dv.getUint8(0),dv.getUint8(1),dv.getUint8(2),dv.getUint8(3));
+  if (sig !== 'LASF') throw new Error('To nie jest plik LAS.');
+  const offPkt = dv.getUint32(96,true), fmtRaw = dv.getUint8(104), dlRek = dv.getUint16(105,true);
+  if (fmtRaw & 0x80) throw new Error('Plik jest skompresowany (LAZ). Wyeksportuj zwykły LAS, PLY albo OBJ.');
+  const fmt = fmtRaw & 0x3f;
+  let n = dv.getUint32(107,true);
+  const wer = dv.getUint8(25);
+  if (!n && wer >= 4 && buf.byteLength > 255) n = Number(dv.getBigUint64(247,true));
+  n = Math.min(n, Math.floor((buf.byteLength-offPkt)/dlRek));
+  if (!n) throw new Error('Plik LAS nie zawiera punktów.');
+  const sx=dv.getFloat64(131,true), sy=dv.getFloat64(139,true), sz=dv.getFloat64(147,true);
+  const ox=dv.getFloat64(155,true), oy=dv.getFloat64(163,true), oz=dv.getFloat64(171,true);
+  const kolOff = {2:20,3:28,5:28,7:30,8:30,10:30}[fmt];
+  const krok = Math.max(1, Math.ceil(n/MAX_PKT)), m = Math.ceil(n/krok);
+  const xyz = new Float32Array(m*3), rgb = kolOff!==undefined ? new Uint8Array(m*3) : null;
+  // współrzędne LAS bywają duże (układ państwowy) — odejmij pierwszy punkt, żeby float32 nie gubił centymetrów
+  const x0 = dv.getInt32(offPkt,true)*sx+ox, y0 = dv.getInt32(offPkt+4,true)*sy+oy, z0 = dv.getInt32(offPkt+8,true)*sz+oz;
+  let maxK = 0;
+  for (let i=0,j=0;i<n;i+=krok,j++){
+    const b = offPkt + i*dlRek;
+    xyz[j*3]=dv.getInt32(b,true)*sx+ox-x0; xyz[j*3+1]=dv.getInt32(b+4,true)*sy+oy-y0; xyz[j*3+2]=dv.getInt32(b+8,true)*sz+oz-z0;
+    if (rgb){ for (let k=0;k<3;k++){ const c = dv.getUint16(b+kolOff+2*k,true); if (c>maxK) maxK=c; } }
+  }
+  if (rgb){
+    const s = maxK > 255 ? 1/257 : 1;
+    for (let i=0,j=0;i<n;i+=krok,j++){ const b = offPkt + i*dlRek; for (let k=0;k<3;k++) rgb[j*3+k] = dv.getUint16(b+kolOff+2*k,true)*s; }
+  }
+  return {xyz, rgb: (rgb && maxK>0) ? rgb : null, nOrig:n};
+}
+
+
+function percentyl(arr, p){
+  const n = arr.length; if (!n) return 0;
+  const krok = Math.max(1, Math.floor(n/200000));
+  const a = []; for (let i=0;i<n;i+=krok) a.push(arr[i]);
+  a.sort((x,y)=>x-y);
+  return a[Math.min(a.length-1, Math.max(0, Math.round(p/100*(a.length-1))))];
+}
+
+// Rzutowanie: v = wysokość, (a,b) = poziom; u = wzdłuż stosu, w = głębokość.
+
+async function zZipa(buf){
+  const b = new Uint8Array(buf), dv = new DataView(buf), N = b.length;
+  const u64 = o => dv.getUint32(o, true) + dv.getUint32(o + 4, true) * 4294967296;
+  let e = -1;
+  for (let i = N - 22; i >= Math.max(0, N - 70000); i--) if (dv.getUint32(i, true) === 0x06054b50){ e = i; break; }
+  if (e < 0) throw new Error('To nie jest poprawny plik ZIP.');
+  let n = dv.getUint16(e + 10, true), o = dv.getUint32(e + 16, true);
+  // ZIP64: liczba wpisów i początek spisu są w osobnym rekordzie (lokalizator tuż przed końcem spisu)
+  if ((n === 0xFFFF || o === 0xFFFFFFFF) && e >= 20 && dv.getUint32(e - 20, true) === 0x07064b50){
+    const z = u64(e - 12);
+    if (z + 56 <= N && dv.getUint32(z, true) === 0x06064b50){ n = u64(z + 32); o = u64(z + 48); }
+  }
+  const td = new TextDecoder(), wpisy = [];
+  for (let k = 0; k < n && o + 46 <= N && dv.getUint32(o, true) === 0x02014b50; k++){
+    const m = dv.getUint16(o + 10, true), nl = dv.getUint16(o + 28, true), el = dv.getUint16(o + 30, true), cl = dv.getUint16(o + 32, true);
+    let us = dv.getUint32(o + 24, true), cs = dv.getUint32(o + 20, true), lo = dv.getUint32(o + 42, true);
+    // ZIP64 w polu dodatkowym (0x0001): po kolei rozmiar po rozpakowaniu, rozmiar spakowany, położenie, tylko te z 0xFFFFFFFF
+    let x = o + 46 + nl; const xk = x + el;
+    while (x + 4 <= xk){
+      const id = dv.getUint16(x, true), dl = dv.getUint16(x + 2, true);
+      if (id === 0x0001){ let q = x + 4;
+        if (us === 0xFFFFFFFF){ us = u64(q); q += 8; }
+        if (cs === 0xFFFFFFFF){ cs = u64(q); q += 8; }
+        if (lo === 0xFFFFFFFF){ lo = u64(q); q += 8; } }
+      x += 4 + dl;
+    }
+    const name = td.decode(b.subarray(o + 46, o + 46 + nl));
+    if (!/(^|\/)(__MACOSX|\.)/.test(name)) wpisy.push({name, m, cs, lo});
+    o += 46 + nl + el + cl;
+  }
+  let w = null;
+  for (const roz of ['ply','las','obj']){ w = wpisy.find(x => x.name.toLowerCase().endsWith('.'+roz)); if (w) break; }
+  if (!w) throw new Error('W tym ZIP-ie nie ma pliku PLY, LAS ani OBJ.' + (wpisy.length ? ' Są: ' + wpisy.slice(0,5).map(x=>x.name).join(', ') : ''));
+  if (w.lo + 30 > N || dv.getUint32(w.lo, true) !== 0x04034b50) throw new Error('Uszkodzony ZIP (zły nagłówek pliku ' + w.name + ').');
+  const start = w.lo + 30 + dv.getUint16(w.lo + 26, true) + dv.getUint16(w.lo + 28, true);
+  const dane = b.subarray(start, Math.min(N, start + w.cs));
+  let wynik;
+  if (w.m === 0) wynik = dane.slice().buffer;
+  else if (w.m === 8){
+    if (typeof DecompressionStream === 'undefined') throw new Error('Ta przeglądarka nie rozpakuje ZIP-a. Rozpakuj go w aplikacji Pliki i wczytaj plik PLY.');
+    wynik = await rozpakuj(dane);
+  } else throw new Error('Nieznana metoda kompresji w ZIP-ie (' + w.m + '). Rozpakuj go w aplikacji Pliki.');
+  return {buf: wynik, nazwa: w.name.split('/').pop()};
+}
+// Deflate przez przeglądarkę. Gdy za końcem danych są nadmiarowe bajty (Safari: „Extra bytes past the end”),
+// szuka dokładnego końca strumienia: za krótko = błąd „niepełne dane”, za długo = błąd „nadmiarowe bajty”.
+const zaDuzo = err => /extra|junk|past the end|trailing/i.test(String(err && err.message));
+async function inflacja(dane){   // przez czytnik, nie Response: Response w Chrome zamienia błąd na „Failed to fetch”
+  const r = new Blob([dane]).stream().pipeThrough(new DecompressionStream('deflate-raw')).getReader();
+  const kaw = []; let dl = 0;
+  for(;;){ const {done, value} = await r.read(); if (done) break; kaw.push(value); dl += value.length; }
+  const out = new Uint8Array(dl); let p = 0; for (const k of kaw){ out.set(k, p); p += k.length; }
+  return out.buffer;
+}
+async function rozpakuj(dane){
+  try { return await inflacja(dane); }
+  catch(err){
+    if (!zaDuzo(err)) throw err;
+    let lo = 1, hi = dane.length - 1, wynik = null;
+    while (lo <= hi){
+      const m = (lo + hi) >> 1;
+      try { wynik = await inflacja(dane.subarray(0, m)); break; }
+      catch(e2){ if (zaDuzo(e2)) hi = m - 1; else lo = m + 1; }
+    }
+    if (!wynik) throw new Error('Nie udało się rozpakować ZIP-a (' + err.message + '). Rozpakuj go w aplikacji Pliki i wczytaj plik PLY.');
+    return wynik;
+  }
+}
+
+
+// ---------- zapis skanu do sprawdzenia ----------
+// Mały ZIP (kilka MB) do wysłania mailem: punkty z zakresu głębokości (sam stos i ziemia przed nim),
+// w oryginalnych współrzędnych, plus opis.txt z ustawieniami, wynikiem i obrysem.
+const CRC = (() => { const t = new Uint32Array(256); for (let n=0;n<256;n++){ let c=n; for (let k=0;k<8;k++) c = c&1 ? 0xEDB88320^(c>>>1) : c>>>1; t[n]=c>>>0; } return t; })();
+function crc32(b){ let c = 0xFFFFFFFF; for (let i=0;i<b.length;i++) c = CRC[(c^b[i])&255]^(c>>>8); return (c^0xFFFFFFFF)>>>0; }
+async function spakuj(dane){
+  if (typeof CompressionStream === 'undefined') return null;
+  try {
+    const r = new Blob([dane]).stream().pipeThrough(new CompressionStream('deflate-raw')).getReader();
+    const kaw = []; let dl = 0;
+    for(;;){ const {done, value} = await r.read(); if (done) break; kaw.push(value); dl += value.length; }
+    const out = new Uint8Array(dl); let p = 0; for (const k of kaw){ out.set(k, p); p += k.length; }
+    return out;
+  } catch(e){ return null; }
+}
+async function zrobZip(pliki){   // pliki: [{nazwa, dane:Uint8Array}]
+  const te = new TextEncoder(), czesci = [], spis = []; let off = 0;
+  const d = new Date(), czas = (d.getHours()<<11)|(d.getMinutes()<<5)|(d.getSeconds()>>1), data = ((d.getFullYear()-1980)<<9)|((d.getMonth()+1)<<5)|d.getDate();
+  for (const f of pliki){
+    const nazwa = te.encode(f.nazwa), crc = crc32(f.dane), sp = await spakuj(f.dane);
+    const metoda = sp && sp.length < f.dane.length ? 8 : 0, tresc = metoda ? sp : f.dane;
+    const h = new DataView(new ArrayBuffer(30));
+    h.setUint32(0,0x04034b50,true); h.setUint16(4,20,true); h.setUint16(8,metoda,true); h.setUint16(10,czas,true); h.setUint16(12,data,true);
+    h.setUint32(14,crc,true); h.setUint32(18,tresc.length,true); h.setUint32(22,f.dane.length,true); h.setUint16(26,nazwa.length,true);
+    czesci.push(new Uint8Array(h.buffer), nazwa, tresc);
+    const c = new DataView(new ArrayBuffer(46));
+    c.setUint32(0,0x02014b50,true); c.setUint16(4,20,true); c.setUint16(6,20,true); c.setUint16(10,metoda,true); c.setUint16(12,czas,true); c.setUint16(14,data,true);
+    c.setUint32(16,crc,true); c.setUint32(20,tresc.length,true); c.setUint32(24,f.dane.length,true); c.setUint16(28,nazwa.length,true); c.setUint32(42,off,true);
+    spis.push(new Uint8Array(c.buffer), nazwa);
+    off += 30 + nazwa.length + tresc.length;
+  }
+  const dlSpisu = spis.reduce((s,x)=>s+x.length,0), e = new DataView(new ArrayBuffer(22));
+  e.setUint32(0,0x06054b50,true); e.setUint16(8,pliki.length,true); e.setUint16(10,pliki.length,true); e.setUint32(12,dlSpisu,true); e.setUint32(16,off,true);
+  return new Blob([...czesci, ...spis, new Uint8Array(e.buffer)], {type:'application/zip'});
+}
+
+// ---------- stan ----------
+const nowaStrona = () => ({dane:null, nazwa:'', os:'y', obrot:0, kat:0, n:0, u:null, v:null, w:null, wCz:0,
+  siatka:null, podloga:[], klonice:[], kabinaLewa:true, widok:{s:100, ox:0, oy:0}});
+const B = {L: nowaStrona(), P: nowaStrona()};
+let akt = 'L', tryb = 'przesun';
+const st = () => B[akt];
+
+function liczbaPL(s){ return parseFloat(String(s).replace(',', '.')); }
+function fmt(x, d){ return isFinite(x) ? x.toLocaleString('pl-PL',{minimumFractionDigits:d, maximumFractionDigits:d}) : '–'; }
+const do001 = x => Math.round(x*100 + 1e-9)/100;    // do 1 cm (m) albo do 0,01 (mp)
+
+// Rzutowanie: v = wysokość, u = wzdłuż samochodu, w = głębokość (od skanera w stronę ładunku).
+// Burta ładunku = najgęstsza pionowa płaszczyzna (jak czoło stosu).
+function przelicz(s, nowyKat){
+  const d = s.dane, n = d.xyz.length/3, xyz = d.xyz;
+  const znak = s.os[0]==='-' ? -1 : 1, os = s.os.replace('-','');
+  const iV = os==='y' ? 1 : 2, iA = 0, iB = os==='y' ? 2 : 1;
+  const V = new Float32Array(n), A = new Float32Array(n), Bb = new Float32Array(n);
+  for (let i=0;i<n;i++){ V[i]=znak*xyz[i*3+iV]; A[i]=xyz[i*3+iA]; Bb[i]=xyz[i*3+iB]; }
+  const ziemia = percentyl(V, 1);
+  const pr = []; { const krok = Math.max(1, Math.floor(n/300000)); for (let i=0;i<n;i+=krok) if (V[i] > ziemia+0.3) pr.push(i); }
+  while (pr.length > 60000){ for (let k=pr.length-1;k>0;k-=2) pr.splice(k,1); }
+  const HB = 0.03;
+  const histW = t => { const co=Math.cos(t), si=Math.sin(t), m = new Map();
+    for (const i of pr){ const b = Math.floor((-A[i]*si+Bb[i]*co)/HB); m.set(b, (m.get(b)||0)+1); } return m; };
+  if (nowyKat && pr.length >= 50){
+    const ostrosc = t => { let mx = 0; for (const c of histW(t).values()) if (c>mx) mx=c; return mx; };
+    let best = -1, bt = 0;
+    for (let k=0; k<180; k+=1){ const t = k*Math.PI/180, m = ostrosc(t); if (m>best){ best=m; bt=t; } }
+    let bt2 = bt;
+    for (let k=-1; k<=1.001; k+=0.1){ const t = bt + k*Math.PI/180, m = ostrosc(t); if (m>best){ best=m; bt2=t; } }
+    s.kat = bt2;
+  } else if (nowyKat) s.kat = 0;
+  let t = s.kat + s.obrot*Math.PI/180, wCz = 0;
+  if (pr.length >= 50){
+    let h = histW(t), mx = 0; for (const c of h.values()) if (c>mx) mx=c;
+    let dmin = 1e9; for (const [b,c] of h) if (c >= 0.5*mx){ const w = (b+0.5)*HB; if (Math.abs(w) < dmin){ dmin=Math.abs(w); wCz=w; } }
+    const co=Math.cos(t), si=Math.sin(t); let przod=0, tyl=0;
+    for (const i of pr){ const w = -A[i]*si+Bb[i]*co - wCz; if (V[i] > ziemia+0.5){ if (w>0.1&&w<1.2) tyl++; else if (w<-0.1&&w>-1.2) przod++; } }
+    if (przod > tyl){ t += Math.PI; s.kat += Math.PI; wCz = -wCz; }
+  }
+  const co = Math.cos(t), si = Math.sin(t);
+  const U = new Float32Array(n), W = new Float32Array(n);
+  for (let i=0;i<n;i++){ U[i]=A[i]*co+Bb[i]*si; W[i]=-A[i]*si+Bb[i]*co; }
+  s.n=n; s.u=U; s.v=V; s.w=W; s.wCz = wCz;
+  zbudujSiatke(s);
+}
+
+// Widok z boku jako siatka 2 cm: liczba punktów i kolor najbliższego skanerowi punktu (ostrzejszy obraz niż średnia z głębi).
+function zbudujSiatke(s){
+  const U=s.u, V=s.v, W=s.w, n=s.n, od = s.wCz - PAS, doo = s.wCz + PAS;
+  const idx = []; for (let i=0;i<n;i++) if (W[i] >= od && W[i] <= doo) idx.push(i);
+  if (idx.length < 100) throw new Error('W skanie prawie nie ma punktów przy burcie. Sprawdź oś pionową.');
+  const uu = Float32Array.from(idx, i=>U[i]), vv = Float32Array.from(idx, i=>V[i]);
+  const u0 = percentyl(uu, 0.2) - 0.1, u1 = percentyl(uu, 99.8) + 0.1;
+  const v0 = percentyl(vv, 0.2) - 0.1, v1 = percentyl(vv, 99.9) + 0.1;
+  const nx = Math.max(1, Math.ceil((u1-u0)/CELL)), ny = Math.max(1, Math.ceil((v1-v0)/CELL));
+  if (nx*ny > 25e6) throw new Error('Skan jest za duży albo nie jest w metrach.');
+  const lic = new Uint32Array(nx*ny), wmin = new Float32Array(nx*ny).fill(1e9), kol = new Int32Array(nx*ny).fill(-1);
+  for (const i of idx){
+    const x = Math.floor((U[i]-u0)/CELL), y = Math.floor((V[i]-v0)/CELL);
+    if (x<0||y<0||x>=nx||y>=ny) continue;
+    const k = y*nx+x; lic[k]++;
+    if (W[i] < wmin[k]){ wmin[k] = W[i]; kol[k] = i; }
+  }
+  const cv = document.createElement('canvas'); cv.width = nx; cv.height = ny;
+  const c2 = cv.getContext('2d'), im = c2.createImageData(nx, ny), rgb = s.dane.rgb;
+  for (let y=0;y<ny;y++) for (let x=0;x<nx;x++){
+    const k = y*nx+x, p = ((ny-1-y)*nx+x)*4, i = kol[k];
+    if (i < 0) continue;
+    if (rgb){ im.data[p]=rgb[i*3]; im.data[p+1]=rgb[i*3+1]; im.data[p+2]=rgb[i*3+2]; }
+    else { const g = 1 - Math.min(1, Math.max(0, (wmin[k]-od)/(2*PAS))); im.data[p]=70+120*g; im.data[p+1]=55+80*g; im.data[p+2]=35+40*g; }
+    im.data[p+3] = 255;
+  }
+  c2.putImageData(im, 0, 0);
+  s.siatka = {nx, ny, u0, v0, lic, img:cv};
+}
+
+// ---------- podłoga, kłonice, wysokości ----------
+function podlogaV(s, u){
+  const p = s.podloga; if (!p.length) return NaN;
+  if (p.length === 1 || u <= p[0][0]) return p[0][1];
+  for (let i=1;i<p.length;i++) if (u <= p[i][0]){ const [a,b]=p[i-1], [c,d]=p[i]; return b + (d-b)*(u-a)/((c-a)||1); }
+  return p[p.length-1][1];
+}
+// Wierzch ładunku tuż przy kłonicy, po stronie pakietu: okno 10–35 cm od środka kłonicy (sama kłonica i jej uchwyty poza oknem).
+// iPad na krawędzi na tle nieba dorabia „mgiełkę” fałszywych punktów, dlatego wierzch to nie najwyższy punkt, tylko wysokość,
+// do której zajęta jest co najmniej połowa tego, co typowo w burcie ładunku. Kratka liczy się jako zajęta dopiero przy
+// co najmniej 30% typowej liczby punktów w kratce burty, bo gęsta mgiełka może trafiać prawie w każdą kratkę.
+function goraPrzy(s, u, kier){
+  const {nx, ny, u0, v0, lic} = s.siatka, f0 = podlogaV(s, u);
+  if (!isFinite(f0)) return NaN;
+  let a = Math.floor((u + kier*0.10 - u0)/CELL), b = Math.floor((u + kier*0.35 - u0)/CELL);
+  if (a > b) [a, b] = [b, a];
+  a = Math.max(0, a); b = Math.min(nx-1, b); if (b - a < 3) return NaN;
+  const yF = Math.max(0, Math.floor((f0 - v0)/CELL) + 1);
+  let yT = -1;
+  for (let y=ny-1;y>yF && yT<0;y--) for (let x=a;x<=b;x++) if (lic[y*nx+x]){ yT = y; break; }
+  if (yT - yF < 10) return NaN;
+  const ya = yF + Math.round(0.2*(yT-yF)), yb = yF + Math.round(0.7*(yT-yF));
+  const lw = []; for (let y=ya;y<=yb;y++) for (let x=a;x<=b;x++) if (lic[y*nx+x]) lw.push(lic[y*nx+x]);
+  lw.sort((p,q)=>p-q);
+  const prg = Math.max(1, 0.3 * (lw.length ? lw[lw.length>>1] : 1));
+  const fW = y => { let z = 0; for (let x=a;x<=b;x++) if (lic[y*nx+x] >= prg) z++; return z/(b-a+1); };
+  const sf = []; for (let y=ya;y<=yb;y++) sf.push(fW(y));
+  sf.sort((p,q)=>p-q); const prog = 0.5 * sf[sf.length>>1];
+  let y = yT; while (y > yF && fW(y) < prog) y--;
+  return v0 + (y+1)*CELL;
+}
+// Kłonice w kolejności od kabiny i pakiety po dwie. Zwraca [{k1, k2}] z wysokościami.
+function pakietyStrony(s){
+  if (!s.siatka) return {pak:[], nieparzyste:false};
+  const kl = s.klonice.slice().sort((p,q) => s.kabinaLewa ? p.u-q.u : q.u-p.u);
+  for (const k of kl){ k.kier = 0; k.goraAuto = NaN; }
+  const pak = [];
+  for (let i=0;i+1<kl.length;i+=2){
+    const a = kl[i], b = kl[i+1], kier = Math.sign(b.u - a.u) || 1;
+    a.kier = kier; b.kier = -kier;
+    pak.push([a, b]);
+  }
+  for (const k of kl){
+    if (!k.kier) continue;
+    k.goraAuto = goraPrzy(s, k.u, k.kier);
+    const g = k.goraRecz != null ? k.goraRecz : k.goraAuto;
+    k.h = do001(g - podlogaV(s, k.u));
+  }
+  return {pak, nieparzyste: kl.length % 2 === 1};
+}
+
+// ---------- wynik ----------
+function wynik(){
+  const dl = liczbaPL($('dl').value), szer = liczbaPL($('szer').value);
+  try { localStorage.setItem('ladunek-dl', $('dl').value); localStorage.setItem('ladunek-szer', $('szer').value); } catch(e){}
+  const L = pakietyStrony(B.L), P = pakietyStrony(B.P), uw = [];
+  const n = Math.max(L.pak.length, P.pak.length);
+  if (B.L.siatka && !B.L.podloga.length) uw.push('Lewa strona: zaznacz podłogę.');
+  if (B.P.siatka && !B.P.podloga.length) uw.push('Prawa strona: zaznacz podłogę.');
+  if (L.nieparzyste) uw.push('Lewa strona: nieparzysta liczba kłonic, ostatnia nie należy do żadnego pakietu.');
+  if (P.nieparzyste) uw.push('Prawa strona: nieparzysta liczba kłonic, ostatnia nie należy do żadnego pakietu.');
+  if (B.L.siatka && B.P.siatka && L.pak.length !== P.pak.length) uw.push('Różna liczba pakietów: lewa ' + L.pak.length + ', prawa ' + P.pak.length + '. Sprawdź kłonice i stronę kabiny.');
+  if (n && (!B.L.siatka || !B.P.siatka)) uw.push('Wczytana tylko jedna strona: średnie są z 2 pomiarów na pakiet zamiast z 4.');
+  if (!(dl > 0)) uw.push('Wpisz długość wałków.');
+  const wiersze = []; let suma = 0, wszystkie = true;
+  for (let i=0;i<n;i++){
+    const hL = (L.pak[i]||[]).map(k=>k.h), hP = (P.pak[i]||[]).map(k=>k.h);
+    const h = [...hL, ...hP].filter(isFinite), brak = hL.length + hP.length - h.length;
+    if (brak) uw.push('Pakiet ' + (i+1) + ': ' + brak + ' pomiar(y) bez wysokości (brak podłogi albo ładunku obok kłonicy).');
+    const sr = h.length ? do001(h.reduce((a,b)=>a+b,0)/h.length) : NaN;
+    const mp = dl > 0 && szer > 0 && isFinite(sr) ? do001(szer*dl*sr) : NaN;
+    if (isFinite(mp)) suma += mp; else wszystkie = false;
+    const kom = a => [0,1].map(j => a[j] != null ? fmt(a[j],2) : '–').join(' / ');
+    wiersze.push('<tr><td>' + (i+1) + '</td><td>' + kom(hL) + '</td><td>' + kom(hP) + '</td><td>' + fmt(sr,2) + '</td><td>' + fmt(mp,2) + '</td></tr>');
+  }
+  $('tabela').innerHTML = n
+    ? '<tr><th>Pakiet</th><th>Lewa [m]</th><th>Prawa [m]</th><th>Średnia [m]</th><th>mp</th></tr>' + wiersze.join('') +
+      '<tr class="suma"><td>Razem</td><td></td><td></td><td></td><td>' + (wszystkie ? fmt(do001(suma),2) : '–') + '</td></tr>'
+    : '<tr><td class="nota">Wczytaj skan, zaznacz podłogę i kłonice.</td></tr>';
+  $('uwagi').innerHTML = uw.map(t => '<div class="ostrz">' + t + '</div>').join('');
+  rysuj();
+}
+
+// ---------- rysowanie ----------
+const cv = $('cv'), ctx = cv.getContext('2d');
+function rozmiar(){ const r = cv.getBoundingClientRect(), d = devicePixelRatio||1; cv.width = Math.round(r.width*d); cv.height = Math.round(r.height*d); rysuj(); }
+const naEkran = (u,v) => [st().widok.ox + u*st().widok.s, st().widok.oy - v*st().widok.s];
+const zEkranu = (x,y) => [(x-st().widok.ox)/st().widok.s, (st().widok.oy-y)/st().widok.s];
+function dopasuj(){
+  const s = st(); if (!s.siatka) return;
+  const r = cv.getBoundingClientRect(), {nx,ny,u0,v0} = s.siatka;
+  const k = Math.min(r.width/(nx*CELL), r.height/(ny*CELL))*0.94;
+  s.widok = {s:k, ox: r.width/2 - (u0+nx*CELL/2)*k, oy: r.height/2 + (v0+ny*CELL/2)*k};
+  rysuj();
+}
+function kolor(n){ return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+const POM = '#e8590c', POD = '#1c7ed6';
+function rysuj(){
+  const d = devicePixelRatio||1; ctx.setTransform(d,0,0,d,0,0);
+  const W = cv.width/d, H = cv.height/d; ctx.clearRect(0,0,W,H);
+  const s = st(); if (!s.siatka) return;
+  const {nx,ny,u0,v0,img} = s.siatka, k = s.widok.s;
+  ctx.strokeStyle = kolor('--line'); ctx.lineWidth = 1;
+  const [ua, vb] = zEkranu(0, H), [ub, va] = zEkranu(W, 0);
+  for (let u=Math.ceil(ua*2)/2; u<=ub; u+=0.5){ const [x]=naEkran(u,0); ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+  for (let v=Math.ceil(vb*2)/2; v<=va; v+=0.5){ const [,y]=naEkran(0,v); ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+  ctx.imageSmoothingEnabled = false;
+  const [x0,y0] = naEkran(u0, v0+ny*CELL);
+  ctx.drawImage(img, x0, y0, nx*CELL*k, ny*CELL*k);
+  ctx.fillStyle = kolor('--ink'); ctx.font = '11px system-ui'; ctx.fillRect(12, H-18, k, 4); ctx.fillText('1 m', 12, H-24);
+  // podłoga
+  if (s.podloga.length){
+    const ue = [Math.min(u0, s.podloga[0][0]), ...s.podloga.map(p=>p[0]), Math.max(u0+nx*CELL, s.podloga[s.podloga.length-1][0])];
+    ctx.strokeStyle = POD; ctx.lineWidth = 2; ctx.setLineDash([8,6]); ctx.beginPath();
+    ue.forEach((u,i)=>{ const [x,y]=naEkran(u, podlogaV(s,u)); i?ctx.lineTo(x,y):ctx.moveTo(x,y); }); ctx.stroke(); ctx.setLineDash([]);
+    for (const p of s.podloga){ const [x,y]=naEkran(p[0],p[1]); ctx.beginPath(); ctx.arc(x,y,6,0,7); ctx.fillStyle='#fff'; ctx.fill(); ctx.lineWidth=2; ctx.strokeStyle=POD; ctx.stroke(); }
+  }
+  // kłonice i wysokości
+  const kl = s.klonice.slice().sort((p,q) => s.kabinaLewa ? p.u-q.u : q.u-p.u);
+  ctx.font = '600 13px system-ui'; ctx.textAlign = 'center';
+  kl.forEach((kk, i) => {
+    const f = podlogaV(s, kk.u), g = kk.goraRecz != null ? kk.goraRecz : kk.goraAuto;
+    const [x, yG] = naEkran(kk.u, isFinite(g) ? g : (isFinite(f) ? f+1 : v0+ny*CELL/2));
+    const [, yF] = naEkran(kk.u, isFinite(f) ? f : v0);
+    ctx.strokeStyle = 'rgba(232,89,12,.35)'; ctx.lineWidth = 6; ctx.beginPath(); ctx.moveTo(x, naEkran(0, v0+ny*CELL)[1]); ctx.lineTo(x, naEkran(0, v0)[1]); ctx.stroke();
+    if (kk.kier && isFinite(f) && isFinite(g)){
+      const xm = naEkran(kk.u + kk.kier*0.2, 0)[0];
+      ctx.strokeStyle = POM; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(xm, yF); ctx.lineTo(xm, yG); ctx.stroke();
+      ctx.beginPath(); ctx.arc(xm, yG, 6, 0, 7); ctx.fillStyle = kk.goraRecz != null ? POM : '#fff'; ctx.fill(); ctx.lineWidth=2; ctx.strokeStyle=POM; ctx.stroke();
+      const t = fmt(kk.h, 2); ctx.fillStyle = 'rgba(0,0,0,.6)'; const tw = ctx.measureText(t).width + 8; ctx.fillRect(xm - tw/2, yG - 28, tw, 18);
+      ctx.fillStyle = '#fff'; ctx.fillText(t, xm, yG - 14);
+    }
+    if (i % 2 === 0 && i+1 < kl.length){
+      const um = (kk.u + kl[i+1].u)/2, fm = podlogaV(s, um), [xp, yp] = naEkran(um, isFinite(fm) ? fm : v0);
+      ctx.fillStyle = POM; ctx.beginPath(); ctx.arc(xp, yp + 18, 12, 0, 7); ctx.fill(); ctx.fillStyle = '#fff'; ctx.fillText(String(i/2+1), xp, yp + 23);
+    }
+  });
+  ctx.textAlign = 'start';
+}
+
+// ---------- dotyk ----------
+const wsk = new Map(); let gest = null, ostTap = {t:0, k:null}, ostDod = null;
+const historia = [];   // dodane punkty podłogi i kłonice, do „Cofnij”
+function cofnijOstatni(){
+  while (historia.length){ const h = historia.pop(), tab = h.typ === 'podloga' ? h.s.podloga : h.s.klonice, i = tab.indexOf(h.ref); if (i >= 0){ tab.splice(i,1); return true; } }
+  return false;
+}
+function pozycja(e){ const r = cv.getBoundingClientRect(); return [e.clientX-r.left, e.clientY-r.top]; }
+function uchwytGory(x, y){   // kłonica, której górny punkt jest pod palcem
+  const s = st(); let best = null, dm = 26;
+  for (const kk of s.klonice){ if (!kk.kier) continue; const g = kk.goraRecz != null ? kk.goraRecz : kk.goraAuto; if (!isFinite(g)) continue;
+    const [a,b] = naEkran(kk.u + kk.kier*0.2, g), dd = Math.hypot(a-x, b-y); if (dd < dm){ dm = dd; best = kk; } }
+  return best;
+}
+function punktPodlogi(x, y){ const s = st(); let best = -1, dm = 24; s.podloga.forEach((p,i)=>{ const [a,b]=naEkran(p[0],p[1]); const dd=Math.hypot(a-x,b-y); if (dd<dm){ dm=dd; best=i; } }); return best; }
+function klonicaPod(x){ const s = st(); let best = -1, dm = 18; s.klonice.forEach((kk,i)=>{ const dd = Math.abs(naEkran(kk.u,0)[0]-x); if (dd<dm){ dm=dd; best=i; } }); return best; }
+cv.addEventListener('pointerdown', e => {
+  if (!st().siatka) return;
+  cv.setPointerCapture(e.pointerId); const p = pozycja(e); wsk.set(e.pointerId, p);
+  if (wsk.size === 1){
+    let typ = 'przesun', cel = null;
+    if (tryb === 'przesun'){ const kk = uchwytGory(...p); if (kk){ typ = 'gora'; cel = kk; } else { const i = punktPodlogi(...p); if (i >= 0){ typ = 'podloga'; cel = i; } } }
+    gest = {typ, cel, start:p, ost:p, t:Date.now(), ruch:0};
+  } else if (wsk.size === 2){
+    const [a,b] = [...wsk.values()];
+    gest = {typ:'szczypanie', d0: Math.hypot(a[0]-b[0],a[1]-b[1]), m0:[(a[0]+b[0])/2,(a[1]+b[1])/2], w0:{...st().widok}, ruch:99};
+  }
+});
+cv.addEventListener('pointermove', e => {
+  if (!wsk.has(e.pointerId) || !gest) return;
+  const p = pozycja(e); wsk.set(e.pointerId, p); const s = st();
+  if (gest.typ === 'szczypanie' && wsk.size === 2){
+    const [a,b] = [...wsk.values()], d = Math.hypot(a[0]-b[0],a[1]-b[1]), m = [(a[0]+b[0])/2,(a[1]+b[1])/2];
+    const w0 = gest.w0, k = Math.max(5, Math.min(5000, w0.s*d/(gest.d0||1)));
+    const uu = (gest.m0[0]-w0.ox)/w0.s, vv = (w0.oy-gest.m0[1])/w0.s;
+    s.widok = {s:k, ox: m[0]-uu*k, oy: m[1]+vv*k}; rysuj(); return;
+  }
+  gest.ruch = Math.max(gest.ruch, Math.hypot(p[0]-gest.start[0], p[1]-gest.start[1]));
+  if (gest.typ === 'gora' && gest.ruch > 3){ gest.cel.goraRecz = zEkranu(...p)[1]; wynik(); }
+  else if (gest.typ === 'podloga' && gest.ruch > 3){ s.podloga[gest.cel] = zEkranu(...p); s.podloga.sort((a,b)=>a[0]-b[0]); gest.cel = punktPodlogi(...p); if (gest.cel < 0) gest = null; wynik(); }
+  else if (gest.typ === 'przesun'){ s.widok.ox += p[0]-gest.ost[0]; s.widok.oy += p[1]-gest.ost[1]; rysuj(); }
+  if (gest) gest.ost = p;
+});
+function koniecDotyku(e){
+  if (!wsk.has(e.pointerId)) return;
+  const p = wsk.get(e.pointerId); wsk.delete(e.pointerId);
+  if (!gest) return;
+  const tap = gest.ruch < 8 && Date.now()-gest.t < 400 && gest.typ !== 'szczypanie', s = st();
+  if (tap){
+    // Stuknięcie dodaje punkt (kłonice sąsiednich pakietów stoją kilka cm od siebie, więc zwykłe stuknięcie nie może usuwać).
+    // Dwa szybkie stuknięcia w to samo miejsce: cofają dodany punkt i usuwają najbliższy istniejący.
+    const teraz = Date.now(), podw = ostDod && teraz - ostDod.t < 450 && Math.hypot(p[0]-ostDod.x, p[1]-ostDod.y) < 20;
+    if (tryb === 'podloga'){
+      if (podw){ cofnijOstatni(); const i = punktPodlogi(...p); if (i >= 0) s.podloga.splice(i,1); ostDod = null; }
+      else { const q = zEkranu(...p); s.podloga.push(q); s.podloga.sort((a,b)=>a[0]-b[0]); historia.push({s, typ:'podloga', ref:q}); ostDod = {t:teraz, x:p[0], y:p[1]}; }
+      wynik();
+    } else if (tryb === 'klonice'){
+      if (podw){ cofnijOstatni(); const i = klonicaPod(p[0]); if (i >= 0) s.klonice.splice(i,1); ostDod = null; }
+      else { const k = {u: zEkranu(...p)[0], goraRecz:null}; s.klonice.push(k); historia.push({s, typ:'klonice', ref:k}); ostDod = {t:teraz, x:p[0], y:p[1]}; }
+      wynik();
+    }
+    else if (gest.typ === 'gora'){ const teraz = Date.now();
+      if (ostTap.k === gest.cel && teraz-ostTap.t < 450){ gest.cel.goraRecz = null; ostTap = {t:0,k:null}; wynik(); } else ostTap = {t:teraz, k:gest.cel}; }
+  }
+  if (wsk.size === 0 || gest.typ === 'szczypanie') gest = null;
+}
+cv.addEventListener('pointerup', koniecDotyku);
+cv.addEventListener('pointercancel', koniecDotyku);
+cv.addEventListener('wheel', e => { e.preventDefault(); if (!st().siatka) return; const [x,y] = pozycja(e), w = st().widok;
+  const uu=(x-w.ox)/w.s, vv=(w.oy-y)/w.s, k=Math.max(5,Math.min(5000,w.s*Math.exp(-e.deltaY*0.0015))); st().widok={s:k, ox:x-uu*k, oy:y+vv*k}; rysuj(); }, {passive:false});
+
+// ---------- przyciski ----------
+function bezpiecznie(f){ try { blad(''); f(); } catch(err){ console.error(err); blad(err.message || String(err)); } }
+const POMOC = {
+  przesun: 'Jeden palec przesuwa widok, dwa palce przybliżają. Przeciągnij górny punkt pomiaru albo punkt podłogi, żeby go poprawić; dwa stuknięcia w górny punkt przywracają wartość programu. Siatka co 0,5 m.',
+  podloga: 'Stukaj w krawędź podłogi skrzyni: na początku i na końcu (przy przyczepie osobno). Dwa szybkie stuknięcia w punkt usuwają go; „Cofnij” usuwa ostatnio dodany.',
+  klonice: 'Stukaj w środek każdej kłonicy (przybliż dwoma palcami, gdy stoją blisko siebie). Program łączy je w pakiety po dwie, od kabiny. Dwa szybkie stuknięcia w kłonicę usuwają ją; „Cofnij” usuwa ostatnio dodaną.'
+};
+function ustawTryb(t){ tryb = t; for (const [id,tt] of [['tPrzesun','przesun'],['tPodloga','podloga'],['tKlonice','klonice']]) $(id).classList.toggle('on', tt===t); $('pomoc').textContent = POMOC[t]; }
+function pokazStrone(){
+  const s = st();
+  $('zL').classList.toggle('on', akt==='L'); $('zP').classList.toggle('on', akt==='P');
+  $('praca').classList.toggle('hid', !s.siatka);
+  $('info').textContent = s.dane ? s.opis : '';
+  $('os').value = s.os; $('obrot').value = s.obrot; $('obrotTxt').textContent = s.obrot + '°';
+  $('bKabina').textContent = 'Kabina: ' + (s.kabinaLewa ? 'z lewej' : 'z prawej');
+  gotowy = null; $('bZapisz').textContent = ZAPISZ; $('bZapisz').classList.remove('main');
+  if (s.siatka){ rozmiar(); if (!s.dopasowany){ dopasuj(); s.dopasowany = true; } }
+  wynik();
+}
+$('zL').addEventListener('click', () => { akt = 'L'; blad(''); pokazStrone(); });
+$('zP').addEventListener('click', () => { akt = 'P'; blad(''); pokazStrone(); });
+$('tPrzesun').addEventListener('click', () => ustawTryb('przesun'));
+$('tPodloga').addEventListener('click', () => ustawTryb('podloga'));
+$('tKlonice').addEventListener('click', () => ustawTryb('klonice'));
+$('bKabina').addEventListener('click', () => { const s = st(); s.kabinaLewa = !s.kabinaLewa; pokazStrone(); });
+$('bDopasuj').addEventListener('click', dopasuj);
+$('bWyczysc').addEventListener('click', () => { const s = st(); s.podloga = []; s.klonice = []; wynik(); });
+$('bCofnij').addEventListener('click', () => { cofnijOstatni(); wynik(); });
+$('plik').addEventListener('change', async e => {
+  const f = e.target.files[0]; if (!f) return;
+  const s = st(), strona = akt;
+  $('info').textContent = 'Wczytuję ' + f.name + '…'; blad('');
+  await new Promise(r=>setTimeout(r,30));
+  let buf, nazwa = f.name;
+  try {
+    buf = await f.arrayBuffer();
+    if (nazwa.toLowerCase().endsWith('.zip')){ const z = await zZipa(buf); buf = z.buf; nazwa = z.nazwa; }
+  } catch(err){ console.error(err); blad(err.message || String(err)); $('info').textContent = ''; e.target.value = ''; return; }
+  bezpiecznie(() => {
+    const roz = nazwa.toLowerCase().split('.').pop();
+    const d = roz==='ply' ? czytajPLY(buf) : roz==='obj' ? czytajOBJ(buf) : roz==='las' ? czytajLAS(buf)
+            : roz==='laz' ? (()=>{ throw new Error('LAZ (skompresowany) nie jest obsługiwany. Wyeksportuj LAS, PLY albo OBJ.'); })()
+            : (()=>{ throw new Error('Nieobsługiwany plik. Użyj PLY, OBJ, LAS albo ZIP z jednym z nich.'); })();
+    const n = nowaStrona(); n.kabinaLewa = s.kabinaLewa; B[strona] = n; for (let i=historia.length-1;i>=0;i--) if (historia[i].s === s) historia.splice(i,1);
+    n.dane = d; n.nazwa = nazwa; n.os = roz==='las' ? 'z' : 'y';
+    n.opis = (nazwa === f.name ? f.name : f.name + ' → ' + nazwa) + ': ' + d.nOrig.toLocaleString('pl-PL') + ' punktów' + (d.nOrig > d.xyz.length/3 ? ' (użyto ' + (d.xyz.length/3).toLocaleString('pl-PL') + ')' : '');
+    przelicz(n, true);
+    pokazStrone();
+    if (!n.podloga.length) ustawTryb('podloga');
+  });
+  if ($('blad').textContent && !st().siatka) $('info').textContent = '';
+  e.target.value = '';
+});
+$('os').addEventListener('change', () => bezpiecznie(() => { const s = st(); s.os = $('os').value; przelicz(s, true); s.podloga = []; s.klonice = []; dopasuj(); wynik(); }));
+$('obrot').addEventListener('input', () => { $('obrotTxt').textContent = $('obrot').value + '°'; });
+$('obrot').addEventListener('change', () => bezpiecznie(() => { const s = st(); s.obrot = +$('obrot').value; przelicz(s, false); s.podloga = []; s.klonice = []; dopasuj(); wynik(); }));
+for (const id of ['dl','szer']) $(id).addEventListener('input', wynik);
+try { $('dl').value = localStorage.getItem('ladunek-dl') || ''; const sz = localStorage.getItem('ladunek-szer'); if (sz) $('szer').value = sz; } catch(e){}
+
+// ---------- zapis skanu do sprawdzenia (bieżąca strona) ----------
+async function zapiszSkan(){
+  const s = st(); if (!s.siatka) return null;
+  const MAX = 500000, xyz = s.dane.xyz, rgb = s.dane.rgb, n = s.n;
+  const idx = []; for (let i=0;i<n;i++) if (s.w[i] >= s.wCz - 1.0 && s.w[i] <= s.wCz + 1.5) idx.push(i);
+  const krok = Math.max(1, Math.ceil(idx.length/MAX)), m = Math.ceil(idx.length/krok);
+  const nagl = 'ply\nformat binary_little_endian 1.0\ncomment Ladunek ' + WERSJA + '\nelement vertex ' + m +
+    '\nproperty float x\nproperty float y\nproperty float z\n' + (rgb ? 'property uchar red\nproperty uchar green\nproperty uchar blue\n' : '') + 'end_header\n';
+  const nb = new TextEncoder().encode(nagl), rek = rgb ? 15 : 12;
+  const ply = new Uint8Array(nb.length + m*rek), dv = new DataView(ply.buffer); ply.set(nb);
+  let o = nb.length;
+  for (let j=0;j<idx.length;j+=krok){ const i = idx[j];
+    dv.setFloat32(o, xyz[i*3], true); dv.setFloat32(o+4, xyz[i*3+1], true); dv.setFloat32(o+8, xyz[i*3+2], true);
+    if (rgb){ ply[o+12]=rgb[i*3]; ply[o+13]=rgb[i*3+1]; ply[o+14]=rgb[i*3+2]; }
+    o += rek; }
+  const kl = s.klonice.slice().sort((p,q) => s.kabinaLewa ? p.u-q.u : q.u-p.u);
+  const opis = [
+    'Ładunek na samochodzie ' + WERSJA + ', strona: ' + (akt==='L' ? 'lewa' : 'prawa'),
+    'Skan: ' + s.nazwa + ', punktów w pliku: ' + s.dane.nOrig + ', użyto: ' + n + ', zapisano: ' + m,
+    'Oś pionowa: ' + s.os + ', obrót: ' + s.obrot + '°, kąt burty: ' + (s.kat*180/Math.PI).toFixed(2) + '°, burta: ' + s.wCz.toFixed(3) + ' m',
+    'Długość wałków: ' + $('dl').value + ', szerokość: ' + $('szer').value + ', kabina: ' + (s.kabinaLewa ? 'z lewej' : 'z prawej'),
+    'Podłoga (wzdłuż, wysokość) [m]: ' + s.podloga.map(p => p[0].toFixed(3) + ' ' + p[1].toFixed(3)).join('; '),
+    'Kłonice od kabiny (wzdłuż; wierzch programu; wierzch ręczny; wysokość) [m]:',
+    ...kl.map(k => k.u.toFixed(3) + '; ' + (isFinite(k.goraAuto) ? k.goraAuto.toFixed(3) : '-') + '; ' + (k.goraRecz != null ? k.goraRecz.toFixed(3) : '-') + '; ' + (isFinite(k.h) ? k.h.toFixed(2) : '-')),
+    'Wynik: ' + $('tabela').innerText.replace(/\t/g,' | ')
+  ].join('\n') + '\n';
+  const zip = await zrobZip([{nazwa:'PointCloud.ply', dane:ply}, {nazwa:'opis.txt', dane:new TextEncoder().encode(opis)}]);
+  const baza = (s.nazwa||'skan').replace(/\.[^.]*$/, '').replace(/[^\w.-]+/g,'_');
+  return new File([zip], 'ladunek_' + (akt==='L' ? 'lewa' : 'prawa') + '_' + baza + '_' + new Date().toISOString().slice(0,16).replace(/[-:T]/g,'') + '.zip', {type:'application/zip'});
+}
+let gotowy = null;
+const ZAPISZ = 'Zapisz skan do sprawdzenia';
+function wyslij(plik){
+  if (navigator.canShare && navigator.canShare({files:[plik]}))
+    return navigator.share({files:[plik], title:'Skan ładunku'}).catch(e => { if (e.name !== 'AbortError') throw e; });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(plik); a.download = plik.name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+  return Promise.resolve();
+}
+$('bZapisz').addEventListener('click', async () => {
+  const b = $('bZapisz'); blad('');
+  if (gotowy){
+    const plik = gotowy; gotowy = null; b.textContent = ZAPISZ; b.classList.remove('main');
+    try { await wyslij(plik); } catch(err){ console.error(err); blad('Nie udało się udostępnić pliku: ' + (err.message || err)); }
+    return;
+  }
+  b.disabled = true; b.textContent = 'Przygotowuję…';
+  try {
+    gotowy = await zapiszSkan();
+    if (gotowy){ b.textContent = 'Wyślij plik (' + (gotowy.size/1048576).toLocaleString('pl-PL',{maximumFractionDigits:1}) + ' MB)'; b.classList.add('main'); }
+    else b.textContent = ZAPISZ;
+  } catch(err){ console.error(err); blad('Nie udało się zapisać skanu: ' + (err.message || err)); b.textContent = ZAPISZ; }
+  b.disabled = false;
+});
+
+addEventListener('resize', () => { if (st().siatka) rozmiar(); });
+matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', rysuj);
+ustawTryb('przesun'); wynik();
+
+if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(e => console.warn('sw', e));
+</script>
+</body></html>
