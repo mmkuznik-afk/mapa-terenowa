@@ -44,7 +44,7 @@ details summary{cursor:pointer;font-weight:600}
 
 <div class="card">
   <h1>Pomiar stosu ze skanu</h1>
-  <p class="nota">Szacunek do kontroli, nie do odbioru. Wynik zależy głównie od przelicznika, który wpisujesz.</p>
+  <p class="nota">Szacunek do kontroli, nie do odbioru. Wynik zależy głównie od przelicznika, który wpisujesz. <span id="wersja" style="white-space:nowrap"></span></p>
   <div class="row">
     <label class="btn main">Wczytaj skan (PLY, OBJ, LAS, ZIP)<input id="plik" type="file" accept=".ply,.obj,.las,.zip,application/zip,application/octet-stream" class="hid"></label>
     <span id="info" class="nota"></span>
@@ -105,6 +105,9 @@ details summary{cursor:pointer;font-weight:600}
 <script>
 'use strict';
 const $ = id => document.getElementById(id);
+// Numer wersji: zmieniaj razem z CACHE w sw.js (pomiar-stosu-vN), wtedy na iPadzie widać, która wersja jest wczytana.
+const WERSJA = 'v4 · 12.11.2026';
+$('wersja').textContent = 'Wersja ' + WERSJA + '.';
 const CELL = 0.02;          // komórka widoku z przodu: 2 cm
 const MAX_PKT = 800000;     // więcej punktów nie poprawia pola, a spowalnia iPada
 
