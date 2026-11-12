@@ -39,12 +39,16 @@ label.f input,label.f select{font-size:17px;padding:8px 10px;border:1px solid va
 input[type=range]{width:100%}
 details summary{cursor:pointer;font-weight:600}
 .hid{display:none!important}
+table.kal{border-collapse:collapse;font-size:13px;margin-top:8px;font-variant-numeric:tabular-nums}
+table.kal th,table.kal td{border-bottom:1px solid var(--line);padding:5px 6px;text-align:left;white-space:nowrap}
+table.kal input{width:80px;font-size:15px;padding:5px 6px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink)}
+table.kal button{border:0;background:none;cursor:pointer;font-size:16px;padding:4px}
 </style></head>
 <body>
 
 <div class="card">
   <h1>Pomiar stosu ze skanu</h1>
-  <p class="nota">Szacunek do kontroli, nie do odbioru. Wynik zależy głównie od przelicznika, który wpisujesz. <span id="wersja" style="white-space:nowrap"></span></p>
+  <p class="nota">Prognoza wyniku ForestX dla sosny, nie odbiór. Przelicznik bierze się z kalibracji: Twoje skany porównane z m³ przychodowanymi w SILP. <span id="wersja" style="white-space:nowrap"></span></p>
   <div class="row">
     <label class="btn main">Wczytaj skan (PLY, OBJ, LAS, ZIP)<input id="plik" type="file" accept=".ply,.obj,.las,.zip,application/zip,application/octet-stream" class="hid"></label>
     <span id="info" class="nota"></span>
@@ -55,9 +59,22 @@ details summary{cursor:pointer;font-weight:600}
       <li>Skanuj samo czoło stosu, idąc powoli wzdłuż niego w odległości 1,5–3 m. Złap też kawałek ziemi przed stosem i oba końce stosu.</li>
       <li>Eksportuj chmurę punktów (albo siatkę) w metrach: PLY, OBJ lub LAS (nie LAZ). ZIP z aplikacji (np. UGScan) wczytuj od razu, bez rozpakowywania.</li>
       <li>Wczytaj plik tutaj. Sprawdź oś pionową i obrys, wpisz długość wałków i przelicznik. Obrys automatyczny zaczyna się od spodu wałków: legary i prześwit pod stosem są pomijane.</li>
-      <li>Na początku porównaj kilkanaście stosów z pomiarem taśmą, zanim zaczniesz ufać wynikom.</li>
+      <li>Kalibracja: po skanie wpisz numer stosu i stuknij „Zapisz pomiar”. Gdy stos zostanie zmierzony w ForestX, wpisz jego m³ z SILP w „Kalibracja ForestX”. Prognoza pojawia się od 3 par; błąd prognozy apka podaje od 4 par. Pozostałości po wywozie kalibruj osobno.</li>
+      <li>Kalibracja leży tylko w pamięci tej przeglądarki. Safari kasuje ją po kilku tygodniach nieużywania strony, jeśli nie jest dodana do ekranu początkowego, więc dodaj ją tam i co jakiś czas rób „Kopia kalibracji”.</li>
       <li>Stos, z którym program sobie nie radzi: „Zapisz skan do sprawdzenia” robi mały ZIP (kilka MB) z samym stosem i opisem; wyślij go mailem.</li>
     </ol>
+  </details>
+</div>
+
+<div class="card">
+  <details id="detKal"><summary>Kalibracja ForestX (<span id="kalN">0</span>)</summary>
+    <p class="nota">Wpisz m³ z SILP przy stosach, które przeszły przez ForestX. Przelicznik = m³ ForestX ÷ mp ze skanu. Błąd prognozy liczę tak, jakby danego stosu nie było w kalibracji (uczciwy test).</p>
+    <div id="kalPods"></div>
+    <div style="overflow-x:auto"><table id="kalTab" class="kal"></table></div>
+    <div class="row" style="margin-top:8px">
+      <button class="btn" id="bKalEksp">Kopia kalibracji</button>
+      <label class="btn">Wczytaj kopię<input id="kalImp" type="file" accept=".json,application/json" class="hid"></label>
+    </div>
   </details>
 </div>
 
@@ -80,17 +97,28 @@ details summary{cursor:pointer;font-weight:600}
   <div class="card">
     <div class="row">
       <label class="f">Długość wałków [m]<input id="dl" type="number" inputmode="decimal" step="0.01" min="0" placeholder="np. 2,5"></label>
-      <label class="f">Przelicznik mp → m³<input id="prz" type="number" inputmode="decimal" step="0.01" min="0" placeholder="np. 0,65"></label>
+      <label class="f">Przelicznik ręczny<input id="prz" type="number" inputmode="decimal" step="0.01" min="0" placeholder="np. 0,65"></label>
     </div>
     <div class="wyn">
       <div><span>Pole czoła</span><b id="rPole">–</b><span>m²</span></div>
       <div><span>Szerokość stosu</span><b id="rSzer">–</b><span>m</span></div>
       <div><span>Średnia wysokość</span><b id="rWys">–</b><span>m</span></div>
       <div><span>Objętość</span><b id="rMp">–</b><span>mp</span></div>
-      <div class="duzy"><span>Masa</span><b id="rM3">–</b><span>m³</span></div>
+      <div><span>Masa (przel. ręczny)</span><b id="rM3">–</b><span>m³</span></div>
     </div>
     <p class="nota" id="rLeg"></p>
     <p class="nota">Szerokość i średnią wysokość sprawdź taśmą na pierwszych stosach. Jeśli się nie zgadzają, problem jest w skanie albo w osi pionowej, nie w przeliczniku.</p>
+  </div>
+
+  <div class="card">
+    <h2 style="font-size:17px;margin:0 0 8px">Prognoza ForestX (sosna)</h2>
+    <div class="row">
+      <label class="f">Numer stosu<input id="nrStosu" type="text" inputmode="numeric" placeholder="np. 1077"></label>
+      <label class="f">Rodzaj<select id="rodzaj" style="width:210px"><option value="p">Pełny stos</option><option value="r">Pozostałość po wywozie</option></select></label>
+      <button class="btn main" id="bKal" style="align-self:flex-end">Zapisz pomiar</button>
+    </div>
+    <div class="wyn"><div class="duzy"><span>ForestX ≈</span><b id="rFx">–</b><span id="rFxOp">m³</span></div></div>
+    <p class="nota" id="kalInfo"></p>
   </div>
 
   <div class="card">
@@ -109,7 +137,7 @@ details summary{cursor:pointer;font-weight:600}
 'use strict';
 const $ = id => document.getElementById(id);
 // Numer wersji: zmieniaj razem z CACHE w sw.js (pomiar-stosu-vN), wtedy na iPadzie widać, która wersja jest wczytana.
-const WERSJA = 'v7 · 12.11.2026';
+const WERSJA = 'v8 · 12.11.2026';
 $('wersja').textContent = 'Wersja ' + WERSJA + '.';
 const CELL = 0.02;          // komórka widoku z przodu: 2 cm
 const MAX_PKT = 800000;     // więcej punktów nie poprawia pola, a spowalnia iPada
@@ -538,6 +566,8 @@ function wynik(){
                            : 'Nie znalazłem legarów: obrys zaczyna się przy ziemi. Jeśli stos leży na legarach, przesuń dolne punkty.')
     : '';
   $('rMp').textContent = dl>0 ? fmt(mp,2) : '–'; $('rM3').textContent = dl>0 && prz>0 ? fmt(m3,2) : '–';
+  S.ost = ok && dl>0 && isFinite(mp) && mp>0 ? {P, dl, mp} : null;
+  prognoza();
   try { localStorage.setItem('stos-dl', $('dl').value); localStorage.setItem('stos-prz', $('prz').value); } catch(e){}
 }
 
@@ -826,7 +856,8 @@ async function zapiszSkan(){
     'Pomiar stosu ' + WERSJA, 'Skan: ' + (S.nazwa||'') + ', punktów w pliku: ' + S.dane.nOrig + ', użyto: ' + n + ', zapisano: ' + m,
     'Oś pionowa: ' + S.os + ', obrót: ' + S.obrot + '°, kąt czoła: ' + (S.kat*180/Math.PI).toFixed(2) + '°',
     'Zakres głębokości: ' + S.gOd.toFixed(3) + ' … ' + S.gDo.toFixed(3) + ' m, czoło: ' + S.wCzolo.toFixed(3) + ' m',
-    'Długość wałków: ' + $('dl').value + ', przelicznik: ' + $('prz').value,
+    'Numer stosu: ' + $('nrStosu').value + ', rodzaj: ' + RODZ[$('rodzaj').value] + ', prognoza ForestX: ' + t('rFx') + ' ' + t('rFxOp'),
+    'Długość wałków: ' + $('dl').value + ', przelicznik ręczny: ' + $('prz').value,
     'Pole czoła: ' + t('rPole') + ' m², szerokość: ' + t('rSzer') + ' m, wysokość: ' + t('rWys') + ' m, ' + t('rMp') + ' mp, ' + t('rM3') + ' m³',
     'Obrys: ' + (S.obrysAuto ? 'automatyczny' : 'poprawiany ręcznie') + '. ' + t('rLeg'),
     'Punkty obrysu (wzdłuż stosu, wysokość) [m]:', ...S.obrys.map(q => q[0].toFixed(3) + ' ' + q[1].toFixed(3))
@@ -864,6 +895,93 @@ for (const id of ['dl','prz']) $(id).addEventListener('input', wynik);
 try { $('dl').value = localStorage.getItem('stos-dl') || ''; $('prz').value = localStorage.getItem('stos-prz') || ''; } catch(e){}
 addEventListener('resize', () => { if (S.siatka){ rozmiar(); rysujGore(); } });
 matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', rysuj);
+
+// ---------- kalibracja ForestX ----------
+// Para = mp z tej apki (pole czoła × długość) + m³ z SILP (wynik ForestX) tego samego stosu.
+// Przelicznik = Σ m³ ForestX ÷ Σ mp (duże stosy ważą więcej niż małe resztki), osobno dla pełnych stosów i pozostałości.
+// Błąd prognozy: dla każdej pary liczę przelicznik z pozostałych par i sprawdzam, o ile chybia (leave-one-out).
+const KAL = 'stos-kal', MIN_PAR = 3, RODZ = {p:'pełny stos', r:'pozostałość'};
+let KALD = (() => { try { const a = JSON.parse(localStorage.getItem(KAL) || '[]'); return Array.isArray(a) ? a : []; } catch(e){ return []; } })();
+function zapiszKal(){ try { localStorage.setItem(KAL, JSON.stringify(KALD)); } catch(e){ blad('Nie mogę zapisać kalibracji w pamięci iPada: ' + (e.message || e)); } }
+const escH = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function pary(rodz, bez){ return KALD.filter(r => r.rodzaj === rodz && r.fx > 0 && r.mp > 0 && r !== bez); }
+function model(rodz, bez){
+  const p = pary(rodz, bez); if (p.length < MIN_PAR) return null;
+  return {k: p.reduce((s,r)=>s+r.fx,0) / p.reduce((s,r)=>s+r.mp,0), n: p.length};
+}
+function bladLOO(r){ const m = model(r.rodzaj, r); return m ? (r.mp*m.k - r.fx)/r.fx : null; }
+function bladModelu(rodz){
+  const e = pary(rodz).map(bladLOO).filter(x => x != null); if (!e.length) return null;
+  return {rms: Math.sqrt(e.reduce((s,x)=>s+x*x,0)/e.length), max: Math.max(...e.map(Math.abs)), sr: e.reduce((s,x)=>s+x,0)/e.length, n: e.length};
+}
+const proc = x => fmt(x*100, 1) + '%';
+const parN = n => n + (n === 1 ? ' para' : [2,3,4].includes(n%10) && ![12,13,14].includes(n%100) ? ' pary' : ' par');
+function prognoza(){
+  const rodz = $('rodzaj').value, ile = pary(rodz).length;
+  let m = model(rodz), uzyte = rodz, uw = '';
+  if (!m && rodz === 'r' && (m = model('p'))){ uzyte = 'p'; uw = ' Przelicznik z pełnych stosów: dla pozostałości niesprawdzony, może przeszacować.'; }
+  if (!S.ost || !m){
+    $('rFx').textContent = '–'; $('rFxOp').textContent = 'm³';
+    $('kalInfo').textContent = !m ? `Za mało par do prognozy (${RODZ[rodz]}): ${ile} z ${MIN_PAR}. Zapisuj pomiary, a po przychodowaniu wpisz m³ z SILP w „Kalibracja ForestX”.` : 'Brak obrysu albo długości wałków.';
+    return;
+  }
+  const b = bladModelu(uzyte);
+  $('rFx').textContent = fmt(S.ost.mp*m.k, 2);
+  $('rFxOp').textContent = b ? 'm³ ± ' + proc(b.rms) : 'm³ (błąd znany od ' + (MIN_PAR+1) + ' par)';
+  $('kalInfo').textContent = `Przelicznik z kalibracji: ${fmt(m.k,3)} (${parN(m.n)}, ${RODZ[uzyte]}).` +
+    (b ? ` Typowy błąd ${proc(b.rms)}, największy ${proc(b.max)}${Math.abs(b.sr) > 0.02 ? ', średnio ' + (b.sr > 0 ? 'zawyża' : 'zaniża') + ' o ' + proc(Math.abs(b.sr)) : ''}.` : '') + uw;
+}
+function rysujKal(){
+  $('kalN').textContent = KALD.length;
+  const pods = ['p','r'].map(rd => { const m = model(rd), b = bladModelu(rd);
+    return `<b>${RODZ[rd]}</b>: ${parN(pary(rd).length)}` + (m ? `, przelicznik ${fmt(m.k,3)}` : '') + (b ? `, błąd typowy ${proc(b.rms)}, maks. ${proc(b.max)}` : ''); });
+  $('kalPods').innerHTML = `<p class='nota'>${pods.join('<br>')}</p>`;
+  const w = [...KALD].sort((a,b) => (b.t||'').localeCompare(a.t||''));
+  $('kalTab').innerHTML = !w.length ? '' : `<tr><th>Data</th><th>Stos</th><th>Rodzaj</th><th>mp</th><th>ForestX m³</th><th>Przel.</th><th>Błąd</th><th></th></tr>` +
+    w.map(r => { const e = r.fx > 0 ? bladLOO(r) : null;
+      return `<tr><td>${escH((r.t||'').slice(0,10))}</td><td>${escH(r.nr)}</td><td>${RODZ[r.rodzaj]||''}</td><td>${fmt(r.mp,2)}</td>` +
+        `<td><input type="number" inputmode="decimal" step="0.01" min="0" data-id="${escH(r.id)}" value="${r.fx > 0 ? r.fx : ''}"></td>` +
+        `<td>${r.fx > 0 ? fmt(r.fx/r.mp,3) : ''}</td><td>${e != null ? (e > 0 ? '+' : '') + proc(e) : ''}</td>` +
+        `<td><button data-us="${escH(r.id)}" title="Usuń">🗑</button></td></tr>`; }).join('');
+}
+$('kalTab').addEventListener('change', e => {
+  const id = e.target.dataset?.id; if (!id) return;
+  const r = KALD.find(x => x.id === id); if (!r) return;
+  const v = liczbaPL(e.target.value); r.fx = v > 0 ? v : null; zapiszKal(); prognoza();
+  setTimeout(rysujKal, 0);   // nie przebudowuję tabeli w trakcie zdarzenia pola (Safari/Chrome gubią wtedy węzeł)
+});
+$('kalTab').addEventListener('click', e => {
+  const id = e.target.dataset?.us; if (!id) return;
+  const r = KALD.find(x => x.id === id);
+  if (!r || !confirm(`Usunąć pomiar stosu ${r.nr || '(bez numeru)'} z ${(r.t||'').slice(0,10)}?`)) return;
+  KALD = KALD.filter(x => x !== r); zapiszKal(); rysujKal(); prognoza();
+});
+$('bKal').addEventListener('click', () => {
+  blad('');
+  if (!S.ost){ blad('Najpierw obrys i długość wałków: nie ma czego zapisać.'); return; }
+  const nr = $('nrStosu').value.trim();
+  if (!nr){ blad('Wpisz numer stosu, bo po nim znajdziesz m³ w SILP.'); return; }
+  KALD.push({id: Date.now().toString(36) + Math.random().toString(36).slice(2,6), t: new Date().toISOString(), nr, rodzaj: $('rodzaj').value,
+    dl: S.ost.dl, pole: +S.ost.P.toFixed(4), mp: +S.ost.mp.toFixed(4), fx: null, plik: S.nazwa || '', obrys: S.obrysAuto ? 'auto' : 'ręczny', wersja: WERSJA});
+  zapiszKal(); rysujKal();
+  $('bKal').textContent = 'Zapisano ✓'; setTimeout(() => { $('bKal').textContent = 'Zapisz pomiar'; }, 1500);
+});
+$('rodzaj').addEventListener('change', prognoza);
+$('bKalEksp').addEventListener('click', () => {
+  const plik = new File([JSON.stringify({typ:'kalibracja-stosow', wersja: WERSJA, pary: KALD}, null, 1)], 'kalibracja-stosow-' + new Date().toISOString().slice(0,10) + '.json', {type:'application/json'});
+  wyslij(plik).catch(err => blad('Nie udało się zapisać kopii: ' + (err.message || err)));
+});
+$('kalImp').addEventListener('change', async e => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return; blad('');
+  try {
+    const o = JSON.parse(await f.text()), nowe = Array.isArray(o) ? o : o.pary;
+    if (!Array.isArray(nowe)) throw new Error('to nie jest kopia kalibracji');
+    const byly = new Set(KALD.map(r => r.id)); let n = 0;
+    for (const r of nowe) if (r && r.id && r.mp > 0 && !byly.has(r.id)){ KALD.push(r); n++; }
+    zapiszKal(); rysujKal(); prognoza(); alert('Dodano par: ' + n + ' (pominięte duplikaty: ' + (nowe.length - n) + ').');
+  } catch(err){ blad('Nie wczytałem kopii: ' + (err.message || err)); }
+});
+rysujKal();
 
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(e => console.warn('sw', e));
 </script>
