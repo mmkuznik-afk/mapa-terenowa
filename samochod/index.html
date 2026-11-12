@@ -3,7 +3,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="theme-color" content="#3B6D11">
 <title>Ładunek na samochodzie</title>
-<link rel="manifest" href="manifest.webmanifest"><link rel="icon" href="../ikona-192.png"><link rel="apple-touch-icon" href="../ikona-192.png">
+<link rel="manifest" href="manifest.webmanifest"><link rel="icon" href="ikona-192.png"><link rel="apple-touch-icon" href="ikona-192.png">
 <!--
   Pomiar drewna stosowego na samochodzie ze skanów LiDAR (iPad Pro). Szacunek do kontroli, NIE do odbioru drewna.
   Wałki wzdłuż samochodu, 4–5 pakietów, każdy pakiet ma 4 kłonice (2 z każdej strony).
@@ -105,7 +105,7 @@ tr.suma td{font-weight:700;border-bottom:0;font-size:17px}
 'use strict';
 const $ = id => document.getElementById(id);
 // Numer wersji: zmieniaj razem z CACHE w sw.js (ladunek-vN), wtedy na iPadzie widać, która wersja jest wczytana.
-const WERSJA = 'v1 · 12.11.2026';
+const WERSJA = 'v2 · 12.11.2026';
 $('wersja').textContent = 'Wersja ' + WERSJA + '.';
 const CELL = 0.02;          // komórka widoku z boku: 2 cm
 const MAX_PKT = 800000;     // więcej punktów nie poprawia wyniku, a spowalnia iPada
