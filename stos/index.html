@@ -139,7 +139,7 @@ table.kal button{border:0;background:none;cursor:pointer;font-size:16px;padding:
 'use strict';
 const $ = id => document.getElementById(id);
 // Numer wersji: zmieniaj razem z CACHE w sw.js (pomiar-stosu-vN), wtedy na iPadzie widać, która wersja jest wczytana.
-const WERSJA = 'v9 · 14.11.2026';
+const WERSJA = 'v10 · 14.11.2026';
 $('wersja').textContent = 'Wersja ' + WERSJA + '.';
 const CELL = 0.02;          // komórka widoku z przodu: 2 cm
 const MAX_PKT = 2400000;    // typowy skan stosu z UGScan (2–3 mln punktów) wchodzi cały: ostrzejszy widok
@@ -1038,6 +1038,20 @@ $('kalImp').addEventListener('change', async e => {
 });
 rysujKal();
 
-if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(e => console.warn('sw', e));
+if ('serviceWorker' in navigator && location.protocol === 'https:'){
+  // Nowa wersja: gdy świeżo pobrany sw.js przejmie stronę, przeładuj raz (bez „otwórz dwa razy”).
+  // Pierwsza instalacja nie przeładowuje. Gdy skan jest wczytany, nie przeładowuję, żeby nie zgubić obrysu: tylko napis.
+  const bylSw = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!bylSw || window.PRZEL) return;
+    if (S.dane){ $('wersja').textContent = 'Wersja ' + WERSJA + '. Jest nowsza: zamknij i otwórz stronę ponownie.'; return; }
+    window.PRZEL = true; location.reload();
+  });
+  // iPad usypia stronę z ekranu początkowego zamiast ją zamykać, więc sprawdzam nową wersję także przy powrocie do niej
+  navigator.serviceWorker.register('sw.js').then(reg => {
+    const sprawdz = () => { if (document.visibilityState === 'visible') reg.update().catch(() => {}); };
+    document.addEventListener('visibilitychange', sprawdz);
+  }).catch(e => console.warn('sw', e));
+}
 </script>
 </body></html>
