@@ -89,8 +89,10 @@ table.kal button{border:0;background:none;cursor:pointer;font-size:16px;padding:
       <button class="btn" id="bAuto">Obrys automatyczny</button>
       <button class="btn" id="bReczny">Rysuj ręcznie</button>
       <button class="btn" id="bDopasuj">Dopasuj widok</button>
+      <button class="btn on hid" id="bNiebo">Pomijaj mgiełkę nieba</button>
       <button class="btn" id="bZapisz">Zapisz skan do sprawdzenia</button>
     </div>
+    <p class="nota hid" id="notaNiebo">Bladoniebieskie punkty to „mgiełka”: fałszywe punkty, które iPad dorabia nad stosem na tle nieba (poznaję je po jasnym, niebieskawym kolorze). Nie są stosem i obrys je pomija. Jeśli wałki są białe (śnieg, brzoza) i znikają z obrysu, wyłącz „Pomijaj mgiełkę nieba”.</p>
     <p class="nota" id="pomoc">Przeciągnij punkt obrysu, żeby go przesunąć. Stuknij przy krawędzi, żeby dodać punkt. Stuknij dwa razy w punkt, żeby go usunąć. Jeden palec przesuwa widok, dwa palce przybliżają. Siatka co 0,5 m.</p>
   </div>
 
@@ -137,7 +139,7 @@ table.kal button{border:0;background:none;cursor:pointer;font-size:16px;padding:
 'use strict';
 const $ = id => document.getElementById(id);
 // Numer wersji: zmieniaj razem z CACHE w sw.js (pomiar-stosu-vN), wtedy na iPadzie widać, która wersja jest wczytana.
-const WERSJA = 'v8 · 12.11.2026';
+const WERSJA = 'v9 · 14.11.2026';
 $('wersja').textContent = 'Wersja ' + WERSJA + '.';
 const CELL = 0.02;          // komórka widoku z przodu: 2 cm
 const MAX_PKT = 800000;     // więcej punktów nie poprawia pola, a spowalnia iPada
@@ -291,8 +293,10 @@ const S = {
   siatka:null,   // {nx,ny,u0,v0,img(canvas),zajete,dol[]}
   obrys:[],      // [[u,v],...] w metrach
   reczny:false,
+  pomNiebo:true,   // pomijaj „mgiełkę” w kolorze nieba (przełącznik bNiebo)
   widok:{s:100, ox:0, oy:0}
 };
+try { if (localStorage.getItem('stos-niebo') === '0'){ S.pomNiebo = false; $('bNiebo').classList.remove('on'); } } catch(e){}
 
 function percentyl(arr, p){
   const n = arr.length; if (!n) return 0;
@@ -362,7 +366,7 @@ function zbudujSiatke(){
   const v0 = percentyl(vv, 0.5) - 0.2, v1 = percentyl(vv, 99.8) + 0.1;
   const nx = Math.max(1, Math.ceil((u1-u0)/CELL)), ny = Math.max(1, Math.ceil((v1-v0)/CELL));
   if (nx*ny > 25e6) throw new Error('Skan jest za duży albo nie jest w metrach.');
-  const lic = new Uint32Array(nx*ny), licCz = new Uint32Array(nx*ny), wCz = new Float32Array(nx*ny), wAll = new Float32Array(nx*ny), r = new Float32Array(nx*ny), g = new Float32Array(nx*ny), b = new Float32Array(nx*ny), gl = new Float32Array(nx*ny);
+  const lic = new Uint32Array(nx*ny), licCz = new Uint32Array(nx*ny), wCz = new Float32Array(nx*ny), wAll = new Float32Array(nx*ny), r = new Float32Array(nx*ny), g = new Float32Array(nx*ny), b = new Float32Array(nx*ny), gl = new Float32Array(nx*ny), licN = new Uint16Array(nx*ny);
   // pas przy czole (do obrysu): wałki dalej w głębi i wyższe z tyłu nie podnoszą obrysu czoła
   const czOd = Math.max(S.gOd, S.wCzolo - 0.4), czDo = Math.min(S.gDo, S.wCzolo + 0.6);
   const rgb = S.dane.rgb, zakresW = (S.gDo - S.gOd) || 1;
@@ -373,7 +377,8 @@ function zbudujSiatke(){
     const k = y*nx+x; lic[k]++;
     wAll[k] += S.w[i];
     if (S.w[i] >= czOd && S.w[i] <= czDo){ licCz[k]++; wCz[k] += S.w[i]; }
-    if (rgb){ r[k]+=rgb[i*3]; g[k]+=rgb[i*3+1]; b[k]+=rgb[i*3+2]; }
+    if (rgb){ const R=rgb[i*3], G=rgb[i*3+1], B=rgb[i*3+2]; r[k]+=R; g[k]+=G; b[k]+=B;
+      if (R+G+B > 450 && B >= R-4 && licN[k] < 65535) licN[k]++; }   // jasny i nieciepły = niebo; drewno ma wyraźnie więcej czerwieni niż niebieskiego
     gl[k] += (S.w[i]-S.gOd)/zakresW;
   }
   // ziemia w kolumnach: 3. percentyl wysokości punktów kolumny (kolumny po 10 cm, potem wygładzenie)
@@ -392,11 +397,17 @@ function zbudujSiatke(){
   for (let k=0;k<nk;k++){ const a=[]; for (let j=k-2;j<=k+2;j++) if (j>=0&&j<nk) a.push(dolK[j]); a.sort((p,q)=>p-q); dolM[k]=a[a.length>>1]; }
   const dol = new Float32Array(nx); for (let x=0;x<nx;x++) dol[x] = dolM[Math.floor(x/KOL)];
 
+  // „Mgiełka”: iPad na krawędzi stosu na tle nieba dorabia fałszywe punkty w kolorze nieba, w tej samej głębokości co czoło.
+  // Komórka, w której większość punktów ma kolor nieba, nie jest stosem: rysowana blado na niebiesko i pomijana w obrysie.
+  const niebo = new Uint8Array(nx*ny); let ileN = 0;
+  if (rgb && S.pomNiebo) for (let k=0;k<nx*ny;k++) if (lic[k] && licN[k]*2 > lic[k]){ niebo[k] = 1; ileN++; licCz[k] = 0; wCz[k] = 0; }
+  S.jestNiebo = !!rgb; S.ileNieba = ileN;
   const cv = document.createElement('canvas'); cv.width = nx; cv.height = ny;
   const ctx = cv.getContext('2d'), im = ctx.createImageData(nx, ny);
   for (let y=0;y<ny;y++) for (let x=0;x<nx;x++){
     const k = y*nx+x, p = ((ny-1-y)*nx+x)*4, c = lic[k];
     if (!c) continue;
+    if (niebo[k]){ im.data[p]=120; im.data[p+1]=175; im.data[p+2]=255; im.data[p+3]=110; continue; }
     if (rgb){ im.data[p]=r[k]/c; im.data[p+1]=g[k]/c; im.data[p+2]=b[k]/c; }
     else { const s = 1 - gl[k]/c; im.data[p]=70+120*s; im.data[p+1]=55+80*s; im.data[p+2]=35+40*s; }
     im.data[p+3] = 255;
@@ -404,7 +415,10 @@ function zbudujSiatke(){
   ctx.putImageData(im, 0, 0);
   // gdy pas czoła wypada poza zakres głębokości ustawiony ręcznie, obrys z całego zakresu
   let sCz = 0, sAll = 0; for (let k=0;k<nx*ny;k++){ sCz += licCz[k]; sAll += lic[k]; }
-  S.siatka = {nx, ny, u0, v0, lic, licCz: sCz >= 0.3*sAll ? licCz : lic, wCz: sCz >= 0.3*sAll ? wCz : wAll, dol, img:cv};
+  let licO = lic, wO = wAll;
+  if (sCz < 0.3*sAll && ileN){ licO = lic.slice(); wO = wAll.slice(); for (let k=0;k<nx*ny;k++) if (niebo[k]){ licO[k] = 0; wO[k] = 0; } }
+  S.siatka = {nx, ny, u0, v0, lic, licCz: sCz >= 0.3*sAll ? licCz : licO, wCz: sCz >= 0.3*sAll ? wCz : wO, dol, img:cv};
+  $('bNiebo').classList.toggle('hid', !S.jestNiebo); $('notaNiebo').classList.toggle('hid', !ileN);
   rysujGore();
 }
 
@@ -801,6 +815,12 @@ $('bReczny').addEventListener('click', () => {
   rysuj(); wynik();
 });
 $('bDopasuj').addEventListener('click', dopasuj);
+$('bNiebo').addEventListener('click', () => bezpiecznie(() => {
+  S.pomNiebo = !S.pomNiebo; $('bNiebo').classList.toggle('on', S.pomNiebo);
+  try { localStorage.setItem('stos-niebo', S.pomNiebo ? '1' : '0'); } catch(e){}
+  if (!S.siatka) return;
+  zbudujSiatke(); try { obrysAuto(); } catch(err){ S.obrys = []; blad(err.message); } rysuj(); wynik();
+}));
 
 // ---------- zapis skanu do sprawdzenia ----------
 // Mały ZIP (kilka MB) do wysłania mailem: punkty z zakresu głębokości (sam stos i ziemia przed nim),
