@@ -142,7 +142,7 @@ const $ = id => document.getElementById(id);
 const WERSJA = 'v9 · 14.11.2026';
 $('wersja').textContent = 'Wersja ' + WERSJA + '.';
 const CELL = 0.02;          // komórka widoku z przodu: 2 cm
-const MAX_PKT = 800000;     // więcej punktów nie poprawia pola, a spowalnia iPada
+const MAX_PKT = 2400000;    // typowy skan stosu z UGScan (2–3 mln punktów) wchodzi cały: ostrzejszy widok
 
 // ---------- wczytywanie plików ----------
 function blad(t){ const e=$('blad'); e.textContent=t; e.classList.toggle('hid',!t); }
@@ -400,7 +400,15 @@ function zbudujSiatke(){
   // „Mgiełka”: iPad na krawędzi stosu na tle nieba dorabia fałszywe punkty w kolorze nieba, w tej samej głębokości co czoło.
   // Komórka, w której większość punktów ma kolor nieba, nie jest stosem: rysowana blado na niebiesko i pomijana w obrysie.
   const niebo = new Uint8Array(nx*ny); let ileN = 0;
-  if (rgb && S.pomNiebo) for (let k=0;k<nx*ny;k++) if (lic[k] && licN[k]*2 > lic[k]){ niebo[k] = 1; ileN++; licCz[k] = 0; wCz[k] = 0; }
+  if (rgb && S.pomNiebo){
+    // kandydat: większość punktów w kolorze nieba. Mgiełką jest tylko wtedy, gdy nad nim (24 cm, ±2 kolumny) też jest
+    // głównie niebo albo pusto; jasne, prześwietlone czoła wałków w środku stosu mają nad sobą drewno, więc zostają stosem.
+    const kand = new Uint8Array(nx*ny); for (let k=0;k<nx*ny;k++) if (lic[k] && licN[k]*2 > lic[k]) kand[k] = 1;
+    for (let y=ny-1;y>=0;y--) for (let x=0;x<nx;x++){ const k = y*nx+x; if (!kand[k]) continue;
+      let zaj = 0, nb = 0;
+      for (let yy=y+1; yy<=y+12 && yy<ny; yy++) for (let xx=Math.max(0,x-2); xx<=Math.min(nx-1,x+2); xx++){ const q = yy*nx+xx; if (lic[q]){ zaj++; if (kand[q]) nb++; } }
+      if (zaj < 3 || nb*2 >= zaj){ niebo[k] = 1; ileN++; licCz[k] = 0; wCz[k] = 0; } }
+  }
   S.jestNiebo = !!rgb; S.ileNieba = ileN;
   const cv = document.createElement('canvas'); cv.width = nx; cv.height = ny;
   const ctx = cv.getContext('2d'), im = ctx.createImageData(nx, ny);
@@ -413,11 +421,36 @@ function zbudujSiatke(){
     im.data[p+3] = 255;
   }
   ctx.putImageData(im, 0, 0);
+  // Ostry widok: kolor tylko z punktów przy przedniej powierzchni (do 4 cm za najbliższym punktem w sąsiedztwie 3×3 kratek 1 cm),
+  // żeby czoła wałków nie mieszały się z tym, co prześwituje w szparach za nimi. Dwie warstwy: 2 cm (wypełnia dziury) i 1 cm na wierzchu.
+  let cv2 = null, cv1 = null;
+  if (rgb){
+    const nx2 = nx*2, ny2 = ny*2, C2 = CELL/2, N2 = nx2*ny2, minW = new Float32Array(N2).fill(Infinity);
+    for (const i of idx){ const x = Math.floor((U[i]-u0)/C2), y = Math.floor((V[i]-v0)/C2); if (x<0||y<0||x>=nx2||y>=ny2) continue;
+      const k = y*nx2+x; if (S.w[i] < minW[k]) minW[k] = S.w[i]; }
+    const tmpW = new Float32Array(N2), przod = new Float32Array(N2);   // minimum 3×3, rozdzielnie w poziomie i w pionie
+    for (let y=0;y<ny2;y++) for (let x=0;x<nx2;x++){ const k=y*nx2+x; let m=minW[k]; if (x>0 && minW[k-1]<m) m=minW[k-1]; if (x<nx2-1 && minW[k+1]<m) m=minW[k+1]; tmpW[k]=m; }
+    for (let y=0;y<ny2;y++) for (let x=0;x<nx2;x++){ const k=y*nx2+x; let m=tmpW[k]; if (y>0 && tmpW[k-nx2]<m) m=tmpW[k-nx2]; if (y<ny2-1 && tmpW[k+nx2]<m) m=tmpW[k+nx2]; przod[k]=m; }
+    const r2 = new Uint32Array(N2), g2 = new Uint32Array(N2), b2 = new Uint32Array(N2), l2 = new Uint16Array(N2);
+    const r1 = new Uint32Array(nx*ny), g1 = new Uint32Array(nx*ny), b1 = new Uint32Array(nx*ny), l1 = new Uint16Array(nx*ny);
+    for (const i of idx){ const x = Math.floor((U[i]-u0)/C2), y = Math.floor((V[i]-v0)/C2); if (x<0||y<0||x>=nx2||y>=ny2) continue;
+      const k = y*nx2+x; if (S.w[i] > przod[k] + 0.04 || l2[k] === 65535) continue;
+      const R = rgb[i*3], G = rgb[i*3+1], B = rgb[i*3+2], k1 = (y>>1)*nx+(x>>1);
+      r2[k] += R; g2[k] += G; b2[k] += B; l2[k]++;
+      if (l1[k1] < 65535){ r1[k1] += R; g1[k1] += G; b1[k1] += B; l1[k1]++; } }
+    const obraz = (w, h, rr, gg, bb, ll, nieboK) => { const c = document.createElement('canvas'); c.width = w; c.height = h;
+      const cx = c.getContext('2d'), d = cx.createImageData(w, h);
+      for (let y=0;y<h;y++) for (let x=0;x<w;x++){ const k = y*w+x, n = ll[k]; if (!n || niebo[nieboK(x,y)]) continue;
+        const q = ((h-1-y)*w+x)*4; d.data[q] = rr[k]/n; d.data[q+1] = gg[k]/n; d.data[q+2] = bb[k]/n; d.data[q+3] = 255; }
+      cx.putImageData(d, 0, 0); return c; };
+    cv1 = obraz(nx, ny, r1, g1, b1, l1, (x,y) => y*nx+x);
+    cv2 = obraz(nx2, ny2, r2, g2, b2, l2, (x,y) => (y>>1)*nx+(x>>1));
+  }
   // gdy pas czoła wypada poza zakres głębokości ustawiony ręcznie, obrys z całego zakresu
   let sCz = 0, sAll = 0; for (let k=0;k<nx*ny;k++){ sCz += licCz[k]; sAll += lic[k]; }
   let licO = lic, wO = wAll;
   if (sCz < 0.3*sAll && ileN){ licO = lic.slice(); wO = wAll.slice(); for (let k=0;k<nx*ny;k++) if (niebo[k]){ licO[k] = 0; wO[k] = 0; } }
-  S.siatka = {nx, ny, u0, v0, lic, licCz: sCz >= 0.3*sAll ? licCz : licO, wCz: sCz >= 0.3*sAll ? wCz : wO, dol, img:cv};
+  S.siatka = {nx, ny, u0, v0, lic, licCz: sCz >= 0.3*sAll ? licCz : licO, wCz: sCz >= 0.3*sAll ? wCz : wO, dol, img:cv, img1:cv1, img2:cv2};
   $('bNiebo').classList.toggle('hid', !S.jestNiebo); $('notaNiebo').classList.toggle('hid', !ileN);
   rysujGore();
 }
@@ -602,15 +635,17 @@ function rysuj(){
   const d = devicePixelRatio||1; ctx.setTransform(d,0,0,d,0,0);
   const W = cv.width/d, H = cv.height/d; ctx.clearRect(0,0,W,H);
   if (!S.siatka) return;
-  const {nx,ny,u0,v0,img} = S.siatka, s = S.widok.s;
+  const {nx,ny,u0,v0,img,img1,img2} = S.siatka, s = S.widok.s;
   // siatka co 0,5 m
   ctx.strokeStyle = kolor('--line'); ctx.lineWidth = 1; ctx.fillStyle = kolor('--mute'); ctx.font = '11px system-ui';
   const [ua, vb] = zEkranu(0, H), [ub, va] = zEkranu(W, 0);
   for (let u=Math.ceil(ua*2)/2; u<=ub; u+=0.5){ const [x]=naEkran(u,0); ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
   for (let v=Math.ceil(vb*2)/2; v<=va; v+=0.5){ const [,y]=naEkran(0,v); ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
-  ctx.imageSmoothingEnabled = false;
+  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
   const [x0,y0] = naEkran(u0, v0+ny*CELL);
   ctx.drawImage(img, x0, y0, nx*CELL*s, ny*CELL*s);
+  if (img1) ctx.drawImage(img1, x0, y0, nx*CELL*s, ny*CELL*s);
+  if (img2) ctx.drawImage(img2, x0, y0, nx*CELL*s, ny*CELL*s);
   // skala 1 m
   ctx.fillStyle = kolor('--ink'); ctx.fillRect(12, H-18, s, 4); ctx.fillText('1 m', 12, H-24);
   // obrys
