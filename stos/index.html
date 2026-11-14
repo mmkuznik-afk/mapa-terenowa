@@ -92,7 +92,7 @@ table.kal button{border:0;background:none;cursor:pointer;font-size:16px;padding:
       <button class="btn on hid" id="bNiebo">Pomijaj mgiełkę nieba</button>
       <button class="btn" id="bZapisz">Zapisz skan do sprawdzenia</button>
     </div>
-    <p class="nota hid" id="notaNiebo">Bladoniebieskie punkty to „mgiełka”: fałszywe punkty, które iPad dorabia nad stosem na tle nieba (poznaję je po jasnym, niebieskawym kolorze). Nie są stosem i obrys je pomija. Jeśli wałki są białe (śnieg, brzoza) i znikają z obrysu, wyłącz „Pomijaj mgiełkę nieba”.</p>
+    <p class="nota hid" id="notaNiebo">Bladoniebieskie punkty to „mgiełka”: fałszywe punkty, które iPad dorabia nad stosem na tle nieba (poznaję je po tym, że nie mają ciepłego koloru drewna). Nie są stosem i obrys je pomija. Jeśli wałki są białe albo szare (śnieg, brzoza, stare drewno) i znikają z obrysu, wyłącz „Pomijaj mgiełkę nieba”.</p>
     <p class="nota" id="pomoc">Przeciągnij punkt obrysu, żeby go przesunąć. Stuknij przy krawędzi, żeby dodać punkt. Stuknij dwa razy w punkt, żeby go usunąć. Jeden palec przesuwa widok, dwa palce przybliżają. Siatka co 0,5 m.</p>
   </div>
 
@@ -139,7 +139,7 @@ table.kal button{border:0;background:none;cursor:pointer;font-size:16px;padding:
 'use strict';
 const $ = id => document.getElementById(id);
 // Numer wersji: zmieniaj razem z CACHE w sw.js (pomiar-stosu-vN), wtedy na iPadzie widać, która wersja jest wczytana.
-const WERSJA = 'v10 · 14.11.2026';
+const WERSJA = 'v11 · 14.11.2026';
 $('wersja').textContent = 'Wersja ' + WERSJA + '.';
 const CELL = 0.02;          // komórka widoku z przodu: 2 cm
 const MAX_PKT = 2400000;    // typowy skan stosu z UGScan (2–3 mln punktów) wchodzi cały: ostrzejszy widok
@@ -366,7 +366,7 @@ function zbudujSiatke(){
   const v0 = percentyl(vv, 0.5) - 0.2, v1 = percentyl(vv, 99.8) + 0.1;
   const nx = Math.max(1, Math.ceil((u1-u0)/CELL)), ny = Math.max(1, Math.ceil((v1-v0)/CELL));
   if (nx*ny > 25e6) throw new Error('Skan jest za duży albo nie jest w metrach.');
-  const lic = new Uint32Array(nx*ny), licCz = new Uint32Array(nx*ny), wCz = new Float32Array(nx*ny), wAll = new Float32Array(nx*ny), r = new Float32Array(nx*ny), g = new Float32Array(nx*ny), b = new Float32Array(nx*ny), gl = new Float32Array(nx*ny), licN = new Uint16Array(nx*ny);
+  const lic = new Uint32Array(nx*ny), licCz = new Uint32Array(nx*ny), wCz = new Float32Array(nx*ny), wAll = new Float32Array(nx*ny), r = new Float32Array(nx*ny), g = new Float32Array(nx*ny), b = new Float32Array(nx*ny), gl = new Float32Array(nx*ny), licC = new Uint16Array(nx*ny), licD = new Uint16Array(nx*ny);
   // pas przy czole (do obrysu): wałki dalej w głębi i wyższe z tyłu nie podnoszą obrysu czoła
   const czOd = Math.max(S.gOd, S.wCzolo - 0.4), czDo = Math.min(S.gDo, S.wCzolo + 0.6);
   const rgb = S.dane.rgb, zakresW = (S.gDo - S.gOd) || 1;
@@ -378,7 +378,8 @@ function zbudujSiatke(){
     wAll[k] += S.w[i];
     if (S.w[i] >= czOd && S.w[i] <= czDo){ licCz[k]++; wCz[k] += S.w[i]; }
     if (rgb){ const R=rgb[i*3], G=rgb[i*3+1], B=rgb[i*3+2]; r[k]+=R; g[k]+=G; b[k]+=B;
-      if (R+G+B > 450 && B >= R-4 && licN[k] < 65535) licN[k]++; }   // jasny i nieciepły = niebo; drewno ma wyraźnie więcej czerwieni niż niebieskiego
+      // drewno jest ciepłe (wyraźnie więcej czerwieni niż niebieskiego); niebo, gałęzie i tło w mgiełce nie są
+      if (R-B >= 8){ if (licC[k] < 65535) licC[k]++; } else if (R+G+B < 270 && licD[k] < 65535) licD[k]++; }
     gl[k] += (S.w[i]-S.gOd)/zakresW;
   }
   // ziemia w kolumnach: 3. percentyl wysokości punktów kolumny (kolumny po 10 cm, potem wygładzenie)
@@ -401,9 +402,10 @@ function zbudujSiatke(){
   // Komórka, w której większość punktów ma kolor nieba, nie jest stosem: rysowana blado na niebiesko i pomijana w obrysie.
   const niebo = new Uint8Array(nx*ny); let ileN = 0;
   if (rgb && S.pomNiebo){
-    // kandydat: większość punktów w kolorze nieba. Mgiełką jest tylko wtedy, gdy nad nim (24 cm, ±2 kolumny) też jest
-    // głównie niebo albo pusto; jasne, prześwietlone czoła wałków w środku stosu mają nad sobą drewno, więc zostają stosem.
-    const kand = new Uint8Array(nx*ny); for (let k=0;k<nx*ny;k++) if (lic[k] && licN[k]*2 > lic[k]) kand[k] = 1;
+    // kandydat: mniej niż 1/3 punktów kratki ma ciepły kolor drewna i kratka nie jest głównie ciemna (cień w szparze między wałkami).
+    // Mgiełką jest tylko wtedy, gdy nad nim (24 cm, ±2 kolumny) też są głównie kandydaci albo pusto; jasne czoła i szpary
+    // w środku stosu mają nad sobą drewno, więc zostają stosem.
+    const kand = new Uint8Array(nx*ny); for (let k=0;k<nx*ny;k++) if (lic[k] && licC[k]*3 < lic[k] && licD[k]*2 < lic[k]) kand[k] = 1;
     for (let y=ny-1;y>=0;y--) for (let x=0;x<nx;x++){ const k = y*nx+x; if (!kand[k]) continue;
       let zaj = 0, nb = 0;
       for (let yy=y+1; yy<=y+12 && yy<ny; yy++) for (let xx=Math.max(0,x-2); xx<=Math.min(nx-1,x+2); xx++){ const q = yy*nx+xx; if (lic[q]){ zaj++; if (kand[q]) nb++; } }
@@ -915,6 +917,7 @@ async function zapiszSkan(){
     'Długość wałków: ' + $('dl').value + ', przelicznik ręczny: ' + $('prz').value,
     'Pole czoła: ' + t('rPole') + ' m², szerokość: ' + t('rSzer') + ' m, wysokość: ' + t('rWys') + ' m, ' + t('rMp') + ' mp, ' + t('rM3') + ' m³',
     'Obrys: ' + (S.obrysAuto ? 'automatyczny' : 'poprawiany ręcznie') + '. ' + t('rLeg'),
+    'Mgiełka nieba: ' + (S.pomNiebo ? 'pomijana' : 'liczona') + ', kratek mgiełki: ' + (S.ileNieba||0),
     'Punkty obrysu (wzdłuż stosu, wysokość) [m]:', ...S.obrys.map(q => q[0].toFixed(3) + ' ' + q[1].toFixed(3))
   ].join('\n') + '\n';
   const zip = await zrobZip([{nazwa:'PointCloud.ply', dane:ply}, {nazwa:'opis.txt', dane:new TextEncoder().encode(opis)}]);
