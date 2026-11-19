@@ -433,13 +433,13 @@ function zbuduj(db){
   }
   const st = stosy(db, T, adr);
   // pozyskanie: wykonanie = większe z wpisu SILP i stosów odebranych (SILP dopisuje z opóźnieniem — jak w kokpicie)
-  for (const p of Object.values(poz)) if (p.typ === 'POZ' && st.odeb[p.nr] > p.mW) p.mW = st.odeb[p.nr];
+  for (const p of Object.values(poz)) if (p.typ === 'POZ' && st.odeb[p.nr] > p.mW) p.mW = st.odeb[p.nr]; zamianyCzynnosci(db, T, poz);
   const lata = [...new Set(Object.values(poz).map(p => p.rok))].filter(x => x > 0).sort();
   const natDic = {}; for (const o of db.obiekty('f_prot_site_dic')) natDic[S(o.prot_site_cd)] = S(o.prot_site_name);
   const bezpiecznie = (f, zast) => { try { return f(); } catch (e) { console.warn(e); return zast; } };
   return {lesn:LESN, nazwa, poz:Object.values(poz), lata, stosy:st.lista, szk:szkice(db, T, adr), tax:taksacja(db, adr), natDic,
     szac:bezpiecznie(() => szacunki(db), []), kontr:bezpiecznie(() => kontrole(db, Object.values(poz)), {})};
-}
+} /* zmiana grupy czynności (leśniczy 19.11: 126a, 126f, 125d IB → IIA): SILP dokłada nową pozycję z planem 0 i uwagą „zm.gr.czynn.” w f_plan_info, a stara zostaje otwarta bez wykonania; nowa przejmuje plan starej, stara wypada z listy */ function zamianyCzynnosci(db, T, poz){ if (!T.f_plan_info) return; const zm = new Set(); for (const r of db.table(T.f_plan_info)) if (S(r[3]) === 'UWAGI' && /zm\.?\s*gr/i.test(S(r[4]))) zm.add(String(r[2])); for (const p of Object.values(poz)){ if (!zm.has(p.nr) || !poz[p.nr]) continue; const q = Object.values(poz).find(x => x !== p && !zm.has(x.nr) && x.adr === p.adr && x.rok === p.rok && x.typ === p.typ && !(x.mW > 0 || x.ilW > 0)); if (!q) continue; p.zamiast = q.cz; if (!p.mP) p.mP = q.mP; if (!p.ilP) p.ilP = q.ilP; if (!p.jedn) p.jedn = q.jedn; delete poz[q.nr]; } }
 // szacunki brakarskie (pomysł kolegi, 16.10): ac_lok = szacunek na wydzieleniu (adres, rok, czynność, typ),
 // ac_opispow = opis (pow_man w arach, nr raptularza, daty, uwaga), ac_masy2 = masa m³ wg gatunku, sortymentu i klasy grubości,
 // ac_swsp → ac_skl = pomiar drzew z raptularza (stopień grubości, liczba drzew w klasach, wysokości) — w paczce tylko dla części szacunków
@@ -531,7 +531,7 @@ function szkice(db, T, adr){
 // jakiekolwiek wykonanie w paczce = pozycja wykonana w całości (leśniczy 8.10: SILP dopisuje wykonanie częściami,
 // a na mapie liczy się, czy zabieg ruszył). Stan „toku” został w kodzie, ale już nie występuje.
 function stanPoz(p){
-  const wy = (p.typ === 'POZ' && p.mP > 0) ? p.mW : p.ilW;
+  const wy = p.typ === 'POZ' ? Math.max(p.mW, p.ilW) : p.ilW;   // POZ bez planu masy (np. pozycja dołożona w roku) też liczy się po m³
   return wy > 0 ? 'wyk' : 'plan';
 }
 const STAN_NAZWA = {plan:'do wykonania', toku:'rozpoczęte', wyk:'wykonane'};
@@ -1033,7 +1033,7 @@ function pozDuza(p){
   const m = p.typ === 'POZ' && p.mP > 0, pl = m ? p.mP : p.ilP, wy = m ? p.mW : p.ilW, j = m ? 'm³' : esc(p.jedn);
   const d = m || pl >= 100 ? 0 : 2, pr = pl > 0 ? Math.round(wy / pl * 100) : null, kol = ST.cz.has(p.cz) ? kolorCz(p.cz) : '';
   return `<div class='pd' style='${kol ? 'border-left-color:' + kol : ''}'>` +
-    `<div class='pd-g'>${kol ? `<span class='kw' style='background:${kol}'></span>` : ''}<b>${ST.rok} ${esc(p.cz)}</b> <span class='op'>${esc(NAZWY[p.cz] || DZIALY[p.typ] || '')}</span><span class='pd-s'>${STAN_NAZWA[stanPoz(p)]}</span></div>` +
+    `<div class='pd-g'>${kol ? `<span class='kw' style='background:${kol}'></span>` : ''}<b>${ST.rok} ${esc(p.cz)}</b>${p.zamiast ? ` <span class='op'>zamiast ${esc(p.zamiast)}</span>` : ''} <span class='op'>${esc(NAZWY[p.cz] || DZIALY[p.typ] || '')}</span><span class='pd-s'>${STAN_NAZWA[stanPoz(p)]}</span></div>` +
     `<div class='pd-l'><span><span class='pd-n'>${fn(wy, d)}</span><span class='pd-j'> / ${fn(pl, d)} ${j}</span><br><span class='op'>wykonanie / plan</span></span>` +
     `<span class='pd-p${pr != null && pr >= 100 ? ' pd-ok' : ''}'>${pr == null ? '—' : pr + '%'}</span></div></div>`;
 }
