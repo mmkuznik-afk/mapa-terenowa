@@ -1116,14 +1116,22 @@ function dopasuj(bb, zapas = 1.08){
 }
 function podepnijMape(){
   const km = document.getElementById('mapa'), pts = new Map();
-  let drag = null, pinch = null;
+  let drag = null, pinch = null, nd = null;   // nd: przytrzymana karteczka notatki {k, x, y, t, on}
+  km.addEventListener('contextmenu', e => e.preventDefault());   // przytrzymanie palcem nie otwiera menu przeglądarki
+  const ndStop = przywroc => { if (!nd) return; clearTimeout(nd.t); if (nd.on && przywroc){ delete NOTP[nd.k]; NOTD = null; rysujNot(); } nd = null; };
   km.addEventListener('wheel', e => { e.preventDefault(); zoomW(e.deltaY < 0 ? 1 / 1.2 : 1.2, e.clientX, e.clientY); }, {passive:false});
   const startDrag = (x, y) => { drag = {x, y, cx:V.cx, cy:V.cy, ruch:false}; };
   km.addEventListener('pointerdown', e => {
     e.preventDefault();
     km.setPointerCapture(e.pointerId); pts.set(e.pointerId, [e.clientX, e.clientY]);
-    if (pts.size === 1) startDrag(e.clientX, e.clientY);
+    if (pts.size === 1){
+      startDrag(e.clientX, e.clientY);
+      // karteczka notatki: przytrzymanie ok. 0,45 s = przesuwanie (19.11); ruch palca wcześniej = zwykłe przesuwanie mapy
+      const k = !MI.on && trafNot(...swiat(e.clientX, e.clientY));
+      if (k){ nd = {k, x:e.clientX, y:e.clientY, on:false}; nd.t = setTimeout(() => { if (!nd) return; nd.on = true; drag = null; NOTD = k; try { navigator.vibrate && navigator.vibrate(35); } catch (er) {} notPrzenies(nd.x, nd.y); }, 450); }
+    }
     else if (pts.size === 2){
+      ndStop(true);
       const [a, b] = [...pts.values()], mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2;
       pinch = {d:Math.hypot(a[0] - b[0], a[1] - b[1]), m:V.m, w:swiat(mx, my)}; drag = null;
     }
@@ -1131,6 +1139,10 @@ function podepnijMape(){
   km.addEventListener('pointermove', e => {
     if (!pts.has(e.pointerId)) return;
     pts.set(e.pointerId, [e.clientX, e.clientY]);
+    if (nd){
+      if (nd.on){ notPrzenies(e.clientX, e.clientY); return; }
+      if (Math.hypot(e.clientX - nd.x, e.clientY - nd.y) >= 8) ndStop(false);
+    }
     if (pinch && pts.size === 2){
       const [a, b] = [...pts.values()], d = Math.hypot(a[0] - b[0], a[1] - b[1]), mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2, r = rozmiar();
       if (d < 10) return;
@@ -1147,6 +1159,8 @@ function podepnijMape(){
     }
   });
   const koniec = e => {
+    if (nd && nd.on){ const k = nd.k; ndStop(false); pts.delete(e.pointerId); drag = null; if (e.type === 'pointerup') notUpusc(k); else { delete NOTP[k]; NOTD = null; rysujNot(); } return; }
+    ndStop(false);
     if (e.type === 'pointerup' && drag && !drag.ruch && pts.size === 1) dotkniecie(e.clientX, e.clientY);
     pts.delete(e.pointerId);
     if (pts.size < 2) pinch = null;
@@ -2028,24 +2042,45 @@ async function zmienNot(fn){
   await idbPut('notatki', NOT);
 }
 const notWydz = k => NOT.filter(n => n.k === k).sort((a, b) => (b.z || b.d).localeCompare(a.z || a.d));
-// karteczka nad prawym górnym rogiem napisu wydzielenia; położenie w px ekranu, przeliczane skalą --vm
+// domyślnie karteczka nad prawym górnym rogiem napisu wydzielenia (przesunięcie w px ekranu, przeliczane skalą --vm);
+// przesunięta palcem (19.11) stoi w zapisanym punkcie terenu: pole p = [x, y] PL-1992 we wszystkich notatkach wydzielenia
 const NOT_DX = 12, NOT_DY = 18;
+let NOTP = {}, NOTD = null;   // NOTP: położenie w trakcie przeciągania (jeszcze nie zapisane), NOTD: przeciągana karteczka
+function notPkt(k){   // środek karteczki w układzie mapy; null = brak położenia
+  if (NOTP[k]) return NOTP[k];
+  const z = NOT.find(n => n.k === k && n.p); if (z) return z.p;
+  const f = G.W.get(k) || G.O.get(k); if (!f || !f.lp) return null;
+  return [f.lp.x + NOT_DX * V.m, f.lp.y + NOT_DY * V.m];
+}
 function rysujNot(){
   const el = document.getElementById('l-not'); if (!el || !G) return;
+  const kartka = `<path class='not-c' d='M-7 -7h14v9l-5 5h-9z'/><path class='not-k' d='M-7 -7h14v9l-5 5h-9z'/><path class='not-r' d='M2 7v-5h5z'/><path class='not-l' d='M-4 -3.5h8M-4 -.5h8M-4 2.5h4'/>`;
   el.innerHTML = [...new Set(NOT.map(n => n.k))].map(k => {
-    const f = G.W.get(k) || G.O.get(k); if (!f || !f.lp) return '';
-    return `<g transform='translate(${f.lp.x.toFixed(1)} ${(-f.lp.y).toFixed(1)})'><g class='lw'><g transform='translate(${NOT_DX} ${-NOT_DY})'>` +
-      `<path class='not-c' d='M-7 -7h14v9l-5 5h-9z'/><path class='not-k' d='M-7 -7h14v9l-5 5h-9z'/><path class='not-r' d='M2 7v-5h5z'/><path class='not-l' d='M-4 -3.5h8M-4 -.5h8M-4 2.5h4'/></g></g></g>`;
+    const wlasne = NOTP[k] || (NOT.find(n => n.k === k && n.p) || {}).p, f = G.W.get(k) || G.O.get(k);
+    const [x, y] = wlasne || (f && f.lp ? [f.lp.x, f.lp.y] : [NaN, NaN]); if (!isFinite(x)) return '';
+    const wn = wlasne ? (NOTD === k ? `<g transform='scale(1.45)'>${kartka}</g>` : kartka) : `<g transform='translate(${NOT_DX} ${-NOT_DY})'>${kartka}</g>`;
+    return `<g transform='translate(${x.toFixed(1)} ${(-y).toFixed(1)})'><g class='lw'>${wn}</g></g>`;
   }).join('');
   podpisy();
 }
 function trafNot(x, y){
   let best = null, bd = 17 * V.m;
   for (const k of new Set(NOT.map(n => n.k))){
-    const f = G.W.get(k) || G.O.get(k); if (!f || !f.lp) continue;
-    const d = Math.hypot(f.lp.x + NOT_DX * V.m - x, f.lp.y + NOT_DY * V.m - y); if (d < bd){ bd = d; best = k; }
+    const p = notPkt(k); if (!p) continue;
+    const d = Math.hypot(p[0] - x, p[1] - y); if (d < bd){ bd = d; best = k; }
   }
   return best;
+}
+// przeciąganie: karteczka trochę nad palcem, żeby było ją widać
+function notPrzenies(px, py){ if (!NOTD) return; NOTP[NOTD] = swiat(px, py - 34); rysujNot(); }
+// upuszczenie: tylko w obrębie tego samego wydzielenia, inaczej karteczka wraca na swoje miejsce
+async function notUpusc(k){
+  const p = NOTP[k]; NOTD = null;
+  const f = p && wydzW(p[0], p[1]);
+  if (!p || !f || f.k !== k){ delete NOTP[k]; rysujNot(); try { navigator.vibrate && navigator.vibrate([25, 60, 25]); } catch (e) {} return; }
+  try { await zmienNot(() => { for (const n of NOT) if (n.k === k) n.p = [Math.round(p[0] * 10) / 10, Math.round(p[1] * 10) / 10]; }); }
+  catch (e) { alert('Nie udało się zapisać położenia: ' + (e && e.message || e)); }
+  delete NOTP[k]; rysujNot();
 }
 function sekcjaNot(k){
   const ed = n => `<textarea id='notTxt' class='pole' rows='3' maxlength='600' placeholder='np. siatka do naprawy, drewno przy drodze, gniazdo'>${esc(n ? n.t : '')}</textarea>` +
