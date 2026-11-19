@@ -2044,7 +2044,7 @@ async function zmienNot(fn){
 const notWydz = k => NOT.filter(n => n.k === k).sort((a, b) => (b.z || b.d).localeCompare(a.z || a.d));
 // domyślnie karteczka nad prawym górnym rogiem napisu wydzielenia (przesunięcie w px ekranu, przeliczane skalą --vm);
 // przesunięta palcem (19.11) stoi w zapisanym punkcie terenu: pole p = [x, y] PL-1992 we wszystkich notatkach wydzielenia
-const NOT_DX = 12, NOT_DY = 18;
+const NOT_DX = 10, NOT_DY = 15, NOT_S = .67;   // NOT_S: skala karteczki (leśniczy 19.11: „za duża o połowę”, 14 → ok. 9 px)
 let NOTP = {}, NOTD = null;   // NOTP: położenie w trakcie przeciągania (jeszcze nie zapisane), NOTD: przeciągana karteczka
 function notPkt(k){   // środek karteczki w układzie mapy; null = brak położenia
   if (NOTP[k]) return NOTP[k];
@@ -2058,7 +2058,8 @@ function rysujNot(){
   el.innerHTML = [...new Set(NOT.map(n => n.k))].map(k => {
     const wlasne = NOTP[k] || (NOT.find(n => n.k === k && n.p) || {}).p, f = G.W.get(k) || G.O.get(k);
     const [x, y] = wlasne || (f && f.lp ? [f.lp.x, f.lp.y] : [NaN, NaN]); if (!isFinite(x)) return '';
-    const wn = wlasne ? (NOTD === k ? `<g transform='scale(1.45)'>${kartka}</g>` : kartka) : `<g transform='translate(${NOT_DX} ${-NOT_DY})'>${kartka}</g>`;
+    const sk = `<g transform='scale(${NOTD === k ? NOT_S * 1.35 : NOT_S})'>${kartka}</g>`;
+    const wn = wlasne ? sk : `<g transform='translate(${NOT_DX} ${-NOT_DY})'>${sk}</g>`;
     return `<g transform='translate(${x.toFixed(1)} ${(-y).toFixed(1)})'><g class='lw'>${wn}</g></g>`;
   }).join('');
   podpisy();
