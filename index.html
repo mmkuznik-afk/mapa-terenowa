@@ -791,7 +791,11 @@ async function wczytaj(file, zapamietaj){
       .map(f => ({x:f.x, y:f.y, nr:S(f.a.nr_gran), stab:S(f.a.stab) === 'T', klasa:f.a.klasa, osnowa:S(f.a.osnowa), wys:D(f.a.wys)}));
     // partie kontrolne jesiennych poszukiwań szkodników sosny (ol_pkt, kod SZK SO) — tylko te, które leżą w wydzieleniu tego leśnictwa
     G.pk = olPkt.filter(f => f.g.t === 'pkt' && T(f.a.kod_ob).toUpperCase().replace(/\s+/g, ' ') === 'SZK SO')
-      .map(f => ({x:f.x, y:f.y, w:wydzW(f.x, f.y)})).filter(p => p.w).map(p => ({x:p.x, y:p.y, k:p.w.k}));
+      .map(f => ({x:f.x, y:f.y, w:wydzW(f.x, f.y)})).filter(p => p.w).map(p => {
+        // przesunięta palcem (19.11) stoi w zapisanym miejscu; klucz = współrzędne z paczki, więc przesunięcie przeżywa nową paczkę
+        const id = p.x.toFixed(1) + ',' + p.y.toFixed(1), o = PKPOZ[id];
+        return {x:o ? o[0] : p.x, y:o ? o[1] : p.y, k:p.w.k, id, x0:p.x, y0:p.y};
+      });
     for (const sid in M.szk) M.szk[sid].geo = [];
     // szkic_pnsw: biogrupy, kępy, gniazda, luki; kod_ob dorabiamy jak na mapie przenośnej
     for (const f of szPnsw) f.a.kod_ob = 'PNSW';
@@ -897,10 +901,42 @@ function rysujPodklad(){
 }
 
 // czerwone kropki: partie kontrolne jesiennych poszukiwań szkodników pierwotnych sosny (przełącznik w ☰)
+// przytrzymanie kropki = przesuwanie w obrębie jej wydzielenia (19.11, IndexedDB 'pkPoz'); rozmiar bez zmian (leśniczy)
+let PKPOZ = {}, PKD = null, PKP = null;   // PKPOZ: id → [x, y] zapisane; PKD: przeciągana kropka; PKP: jej położenie w trakcie
 function rysujPk(){
   const el = document.getElementById('l-pk'); if (!el) return;
-  const d = (G.pk || []).map(p => `M${p.x.toFixed(2)} ${(-p.y).toFixed(2)}h0`).join('');
+  const kr = p => `M${p[0].toFixed(2)} ${(-p[1]).toFixed(2)}h0`;
+  const d = (G.pk || []).filter(p => p !== PKD).map(p => kr([p.x, p.y])).join('');
   el.innerHTML = ST.pk && d ? `<path class='pk-c' d='${d}'/><path class='pk-k' d='${d}'/>` : '';
+  if (ST.pk && PKD && PKP) el.innerHTML += `<path class='pk-c' style='stroke-width:${(14 * 1.35 * V.m).toFixed(2)}' d='${kr(PKP)}'/><path class='pk-k' style='stroke-width:${(10 * 1.35 * V.m).toFixed(2)}' d='${kr(PKP)}'/>`;
+  pkRozmiar();
+}
+// stały rozmiar na ekranie, w oddaleniu mniejsze (19.11: przy całym leśnictwie zakrywały zabiegi); wołane też z podpisy() przy każdym zoomie
+const pkSkala = () => V.m > 12 ? .55 : V.m > 5 ? .75 : 1;
+function pkRozmiar(){
+  const c = document.querySelector('#l-pk .pk-c'), k = document.querySelector('#l-pk .pk-k'), s = pkSkala();
+  if (c){ c.style.strokeWidth = (14 * s * V.m).toFixed(2); k.style.strokeWidth = (10 * s * V.m).toFixed(2); }
+}
+function trafPk(x, y){
+  if (!ST.pk || !G.pk) return null;
+  let best = null, bd = 16 * V.m;
+  for (const p of G.pk){ const d = Math.hypot(p.x - x, p.y - y); if (d < bd){ bd = d; best = p; } }
+  return best;
+}
+function pkPrzenies(px, py){ if (!PKD) return; PKP = swiat(px, py - 34); rysujPk(); }
+async function pkUpusc(){
+  const p = PKD, q = PKP; PKD = null; PKP = null;
+  const f = q && wydzW(q[0], q[1]);
+  if (!p || !q || !f || f.k !== p.k){ rysujPk(); try { navigator.vibrate && navigator.vibrate([25, 60, 25]); } catch (e) {} return; }
+  p.x = Math.round(q[0] * 10) / 10; p.y = Math.round(q[1] * 10) / 10; rysujPk();
+  try { const z = await idbGet('pkPoz') || {}; z[p.id] = [p.x, p.y]; PKPOZ = z; await idbPut('pkPoz', z); }
+  catch (e) { alert('Nie udało się zapisać położenia: ' + (e && e.message || e)); }
+}
+async function pkPrzywroc(){
+  if (!confirm('Przywrócić wszystkie kropki PK na miejsca z paczki mLasa?')) return;
+  PKPOZ = {}; try { await idbPut('pkPoz', {}); } catch (e) {}
+  for (const p of G.pk || []){ p.x = p.x0; p.y = p.y0; }
+  rysujPk(); panelInfo();
 }
 
 // ---- kolorowanie zabiegów roku -----------------------------------------------------------
@@ -1010,6 +1046,7 @@ function panelInfo(kom){
     ${kom || ''}
     <h3>Warstwy</h3>
     <label class='przel'><input type='checkbox' ${ST.pk ? 'checked' : ''} ${G.pk && G.pk.length ? '' : 'disabled'} onchange='ST.pk=this.checked;zapiszUst();rysujPk();podpisy()'> <span class='kw' style='background:#e00000'></span> Szukanie szkodników sosny — PK <span class='op'>${G.pk && G.pk.length ? G.pk.length + ' ' + 'punktów' : 'brak w paczce'}</span></label>
+    ${Object.keys(PKPOZ).length ? `<p class='nota'>Przesunięte kropki PK: ${Object.keys(PKPOZ).length}. <button class='btn' style='font-size:13px;padding:5px 10px' onclick='pkPrzywroc()'>Przywróć z paczki</button></p>` : ''}
     <label class='przel'><input type='checkbox' ${ST.gr ? 'checked' : ''} onchange='ST.gr=this.checked;zapiszUst();podpisy()'> Punkty graniczne (kamienie) <span class='op'>${G.gr.length}</span></label>
     <label class='przel'><input type='checkbox' ${ST.grNr ? 'checked' : ''} onchange='ST.grNr=this.checked;zapiszUst();podpisy()'> Numery punktów po przybliżeniu</label>
     <p class='nota'>Pełna fioletowa kropka = punkt zastabilizowany, kółko = bez stabilizacji. Kropki pojawiają się po przybliżeniu.</p>
@@ -1086,10 +1123,7 @@ function podpisy(){
   ml.style.display = ST.moje && V.m < 4 ? '' : 'none';
   ml.setAttribute('font-size', (12 * V.m).toFixed(3)); ml.setAttribute('stroke-width', (3 * V.m).toFixed(3));
   ml.setAttribute('transform', `translate(0 ${(-15 * V.m).toFixed(3)})`);
-  const pkc = document.querySelector('#l-pk .pk-c'), pkk = document.querySelector('#l-pk .pk-k');   // czerwone kropki PK: stały rozmiar na ekranie
-  // w oddaleniu kropki PK mniejsze (19.11): przy całym leśnictwie zakrywały zabiegi
-  const pkS = V.m > 12 ? .55 : V.m > 5 ? .75 : 1;
-  if (pkc){ pkc.style.strokeWidth = (14 * pkS * V.m).toFixed(2); pkk.style.strokeWidth = (10 * pkS * V.m).toFixed(2); }
+  pkRozmiar();   // czerwone kropki PK: stały rozmiar na ekranie
   // w oddaleniu siatka wydzieleń i drogi przygaszone, żeby zabiegi i linie oddziałowe czytały się kolorem (19.11)
   const mp = document.getElementById('mapa'), dal = V.m > 8; if (mp && mp.classList.contains('dal') !== dal) mp.classList.toggle('dal', dal);
   // linia oddziałowa: kreska ok. 4 mm na ekranie przy każdym zoomie (Chrome liczy dasharray w jednostkach mapy); po oddaleniu (V.m > 3) cienka jak dawniej 1,6 px, pełny wzór od V.m < 1,5
@@ -1116,9 +1150,11 @@ function dopasuj(bb, zapas = 1.08){
 }
 function podepnijMape(){
   const km = document.getElementById('mapa'), pts = new Map();
-  let drag = null, pinch = null, nd = null;   // nd: przytrzymana karteczka notatki {k, x, y, t, on}
+  let drag = null, pinch = null, nd = null;   // nd: przytrzymana karteczka notatki {k, …} albo kropka PK {pk, …}; x, y, t, on
   km.addEventListener('contextmenu', e => e.preventDefault());   // przytrzymanie palcem nie otwiera menu przeglądarki
-  const ndStop = przywroc => { if (!nd) return; clearTimeout(nd.t); if (nd.on && przywroc){ delete NOTP[nd.k]; NOTD = null; rysujNot(); } nd = null; };
+  const ndCofnij = () => { if (nd.pk){ PKD = null; PKP = null; rysujPk(); } else { delete NOTP[nd.k]; NOTD = null; rysujNot(); } };
+  const ndStop = przywroc => { if (!nd) return; clearTimeout(nd.t); if (nd.on && przywroc) ndCofnij(); nd = null; };
+  const ndRusz = (x, y) => nd.pk ? pkPrzenies(x, y) : notPrzenies(x, y);
   km.addEventListener('wheel', e => { e.preventDefault(); zoomW(e.deltaY < 0 ? 1 / 1.2 : 1.2, e.clientX, e.clientY); }, {passive:false});
   const startDrag = (x, y) => { drag = {x, y, cx:V.cx, cy:V.cy, ruch:false}; };
   km.addEventListener('pointerdown', e => {
@@ -1128,7 +1164,8 @@ function podepnijMape(){
       startDrag(e.clientX, e.clientY);
       // karteczka notatki: przytrzymanie ok. 0,45 s = przesuwanie (19.11); ruch palca wcześniej = zwykłe przesuwanie mapy
       const k = !MI.on && trafNot(...swiat(e.clientX, e.clientY));
-      if (k){ nd = {k, x:e.clientX, y:e.clientY, on:false}; nd.t = setTimeout(() => { if (!nd) return; nd.on = true; drag = null; NOTD = k; try { navigator.vibrate && navigator.vibrate(35); } catch (er) {} notPrzenies(nd.x, nd.y); }, 450); }
+      const pk = !k && !MI.on && trafPk(...swiat(e.clientX, e.clientY));   // kropka PK jesiennych poszukiwań: ten sam gest (19.11)
+      if (k || pk){ nd = {k, pk, x:e.clientX, y:e.clientY, on:false}; nd.t = setTimeout(() => { if (!nd) return; nd.on = true; drag = null; if (nd.pk) PKD = nd.pk; else NOTD = nd.k; try { navigator.vibrate && navigator.vibrate(35); } catch (er) {} ndRusz(nd.x, nd.y); }, 450); }
     }
     else if (pts.size === 2){
       ndStop(true);
@@ -1140,7 +1177,7 @@ function podepnijMape(){
     if (!pts.has(e.pointerId)) return;
     pts.set(e.pointerId, [e.clientX, e.clientY]);
     if (nd){
-      if (nd.on){ notPrzenies(e.clientX, e.clientY); return; }
+      if (nd.on){ ndRusz(e.clientX, e.clientY); return; }
       if (Math.hypot(e.clientX - nd.x, e.clientY - nd.y) >= 8) ndStop(false);
     }
     if (pinch && pts.size === 2){
@@ -1159,7 +1196,8 @@ function podepnijMape(){
     }
   });
   const koniec = e => {
-    if (nd && nd.on){ const k = nd.k; ndStop(false); pts.delete(e.pointerId); drag = null; if (e.type === 'pointerup') notUpusc(k); else { delete NOTP[k]; NOTD = null; rysujNot(); } return; }
+    if (nd && nd.on){ const n = nd; ndStop(false); pts.delete(e.pointerId); drag = null;
+      if (e.type === 'pointerup'){ if (n.pk) pkUpusc(); else notUpusc(n.k); } else { nd = n; ndCofnij(); nd = null; } return; }
     ndStop(false);
     if (e.type === 'pointerup' && drag && !drag.ruch && pts.size === 1) dotkniecie(e.clientX, e.clientY);
     pts.delete(e.pointerId);
@@ -2131,7 +2169,7 @@ function notImport(){
 // ---- start: ostatnia paczka z pamięci telefonu, a jak jej nie ma — ekran wyboru ----------------------
 (async () => {
   ekranStartowy();
-  try { NOT = await idbGet('notatki') || []; } catch (e) { console.warn(e); }
+  try { NOT = await idbGet('notatki') || []; PKPOZ = await idbGet('pkPoz') || {}; } catch (e) { console.warn(e); }
   try { MOJE = await idbGet('moje') || []; WPLIKI = (await idbGet('warstwy') || []).map(przygotujWarstwe); } catch (e) { console.warn(e); }
   try {
     const z = await idbGet('zip');
