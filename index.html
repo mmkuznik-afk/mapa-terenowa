@@ -39,6 +39,18 @@ button,select,input,textarea{font:inherit;color:inherit}
 .droga{fill:none;stroke:#8d6e4f;stroke-width:1.2}
 .ciek{fill:none;stroke:#3a8fd0;stroke-width:1.2}
 .sel{fill:none;stroke:#ff00c8;stroke-width:4}
+/* notatki (19.11): żółta karteczka z zagiętym rogiem, stały rozmiar na ekranie; na karcie żółte kartki */
+#l-not{pointer-events:none}
+.not-c{fill:none;stroke:#fff;stroke-width:3.2;stroke-linejoin:round}
+.not-k{fill:#ffe45c;stroke:#6e5200;stroke-width:1.2;stroke-linejoin:round}
+.not-r{fill:#d9ae00;stroke:#6e5200;stroke-width:1;stroke-linejoin:round}
+.not-l{fill:none;stroke:#8a6d00;stroke-width:1.1;stroke-linecap:round}
+.nots{margin:10px 0 4px}
+.not{background:#fff6bf;border:1px solid #ead77a;border-left:5px solid #e0b400;border-radius:8px;padding:6px 8px 4px 10px;margin:6px 0;color:#2c2610}
+.not-t{font-size:15px;overflow-wrap:anywhere}
+.not-s{display:flex;align-items:center;gap:2px;margin-top:2px}.not-s .op{flex:1;color:#76672a}
+.not-s button{border:0;background:none;font-size:16px;cursor:pointer;padding:3px 7px;color:#4a3f10}
+.not-dod{width:100%}
 .dal .w:not(.plan):not(.wyk){stroke-opacity:.4}.dal .droga{stroke-opacity:.45}.dal .ciek{stroke-opacity:.7}
 /* punkty graniczne (gr_pkt): kropka stałej wielkości na ekranie = odcinek zerowej długości z okrągłym końcem */
 .gr{fill:none;stroke-linecap:round}
@@ -826,7 +838,7 @@ function budujUklad(){
     <defs><clipPath id='granica'>${G.les.map(f => `<path d='${f.d}'/>`).join('')}</clipPath></defs>
     <g id='l-pzS' clip-path='url(#granica)'></g><g id='l-wydz'></g><g id='l-pzO' clip-path='url(#granica)'></g><g id='l-szkP'></g><g id='l-cieki' clip-path='url(#granica)'></g><g id='l-drogi' clip-path='url(#granica)'></g><g id='l-pzD' clip-path='url(#granica)'></g>
     <g id='l-oddz'></g><g id='l-les'></g><g id='l-szkL'></g><g id='l-war'></g><g id='l-sel'></g><g id='l-szkD'></g><g id='l-pzI'></g><g id='l-gr'></g><g id='l-pk'></g><g id='l-moje'></g><g id='l-wyb'></g><g id='l-mier'></g>
-    <g id='l-labW' class='lab'></g><g id='l-grLab' class='lab lab-g'></g><g id='l-mojeLab' class='lab lab-m'></g><g id='l-labO' class='lab lab-o'></g><g id='l-cel'></g><g id='l-gps'></g>
+    <g id='l-labW' class='lab'></g><g id='l-grLab' class='lab lab-g'></g><g id='l-mojeLab' class='lab lab-m'></g><g id='l-labO' class='lab lab-o'></g><g id='l-not'></g><g id='l-cel'></g><g id='l-gps'></g>
   </svg></div>
   <div class='gora'>
     <div class='rok'><button onclick='rokKrok(-1)' aria-label='Poprzedni rok'>‹</button><select id='rok' onchange='ustawRok(+this.value)'>${M.lata.map(r => `<option value='${r}'${r === ST.rok ? ' selected' : ''}>${r}</option>`).join('')}</select><button onclick='rokKrok(1)' aria-label='Następny rok'>›</button></div>
@@ -842,7 +854,7 @@ function budujUklad(){
   <div class='dol'><div id='mier' class='mier'></div><div id='cel' class='cel' onclick='celPokaz()'></div><div id='gdzie' class='gdzie' onclick='if(GPS.k)otworzKarte(GPS.k)'></div><div id='leg' class='leg'></div></div>
   <div id='ark' class='ark'><div class='uchwyt' onclick='zamknijArk()'></div><button class='x' onclick='zamknijArk()' aria-label='Zamknij'>×</button><div id='arkT'></div></div>`;
   rysujPodklad();
-  rysujPacz(); rysujWarstwy(); rysujMoje(); rysujMier(); rysujSzk(); rysujCel();
+  rysujPacz(); rysujWarstwy(); rysujMoje(); rysujMier(); rysujSzk(); rysujCel(); rysujNot();
   koloruj();
   podepnijMape();
   dopasuj(G.bb);
@@ -1004,6 +1016,7 @@ function panelInfo(kom){
     ${PACZ.map(p => { const n = p.id === 'drogi' ? G.pz.drogi.length + G.pz.ppoz.length + G.pz.infra.length : G.pz[p.id].length;
       return `<label class='przel'><input type='checkbox' ${ST.pz.has(p.id) ? 'checked' : ''} ${n ? '' : 'disabled'} onchange="pzPrzel('${p.id}',this.checked)"> ${p.nazwa} <span class='op'>${n ? n + ' ' + obiektow(n) : 'brak w paczce'}</span></label>`; }).join('')}
     <p class='nota'>Siedliska, ochrona przyrody i drogi z Leśnej Mapy Numerycznej w paczce. Dotknięcie mapy pokazuje, co leży w tym miejscu.</p>
+    <div class='wrs'><span class='kw' style='background:#ffe45c'></span><span class='nz'>Notatki na wydzieleniach <span class='op'>${NOT.length}</span></span><button class='btn' style='font-size:14px;color:inherit' onclick='panelNot()'>Lista ›</button></div>
     <div class='wrs'><input type='checkbox' ${ST.moje ? 'checked' : ''} onchange='ST.moje=this.checked;zapiszUst();rysujMoje()' aria-label='Pokaż moje obiekty'><span class='kw' style='background:#a6ff00'></span><span class='nz'>Moje punkty i pomiary <span class='op'>${MOJE.length}</span></span><button class='btn' style='font-size:14px;color:inherit' onclick='panelMoje()'>Lista ›</button></div>
     ${WPLIKI.map(w => `<div class='wrs'><input type='checkbox' ${w.wid ? 'checked' : ''} onchange="wPrzel('${w.id}',this.checked)" aria-label='Pokaż warstwę'><span class='kw' style='background:${w.kol}' onclick="wKolor('${w.id}')" title='Zmień kolor'></span><span class='nz'>${esc(w.nazwa)} <span class='op'>${w.f.length}</span></span><button onclick="wPokaz('${w.id}')" aria-label='Pokaż na mapie'>◎</button><button onclick="wUsun('${w.id}')" aria-label='Usuń warstwę'>🗑</button></div>`).join('')}
     <div style='margin-top:12px'><button class='btn' onclick='dodajWarstwe()'>＋ Dodaj warstwę z pliku</button></div>
@@ -1019,14 +1032,14 @@ function panelInfo(kom){
 
 // ---- karta wydzielenia ----------------------------------------------------------------------
 let OBR = null;   // wydzielenie z samą obwódką (pierwsze dotknięcie), bez karty
-function otworzKarte(k){ OBR = null; KARTA = k; PUNKT = null; WYBM = null; OBW = null; podswietl(null); const wyb = document.getElementById('grWyb'); if (wyb) wyb.setAttribute('d', ''); rysujKarte(); rysujSel(); }
+function otworzKarte(k){ if (KARTA !== k) NOTED = null; OBR = null; KARTA = k; PUNKT = null; WYBM = null; OBW = null; podswietl(null); const wyb = document.getElementById('grWyb'); if (wyb) wyb.setAttribute('d', ''); rysujKarte(); rysujSel(); }
 function rysujKarte(){
   const k = KARTA; if (!k) return;
   const f = G.W.get(k), pr = M.poz.filter(p => p.adr === k && p.rok === ST.rok).sort((a, b) => nat(a.cz, b.cz));
   const tu = GPS.k === k ? ` <span class='op'>· tu jesteś</span>` : '';
   otworzArk('karta', `<h2>${esc(krotki(k))}${tu}</h2>` +
     (pr.length ? pr.map(pozDuza).join('') : `<div class='op' style='margin:8px 0'>w ${ST.rok} nic w planie</div>`) +
-    opisWydz(k) + `<div style='margin-top:14px;display:flex;gap:8px;flex-wrap:wrap'><button class='btn' onclick="pokazNaMapie(G.W.get('${esc(k)}').bb)">◎ Pokaż na mapie</button>` +
+    sekcjaNot(k) + opisWydz(k) + `<div style='margin-top:14px;display:flex;gap:8px;flex-wrap:wrap'><button class='btn' onclick="pokazNaMapie(G.W.get('${esc(k)}').bb)">◎ Pokaż na mapie</button>` +
     (f && f.lp && GPS.k !== k ? btnProw(f.lp.x, f.lp.y, krotki(k)) : '') + `</div>`);
 }
 // pozycja roku na górze karty (leśniczy 5.11): kolor z mapy, wykonanie / plan dużymi cyframi i procent wykonania
@@ -1059,6 +1072,7 @@ function podpisy(){
   o.setAttribute('font-size', (po * V.m).toFixed(2)); o.setAttribute('stroke-width', (po / 4.5 * V.m).toFixed(2));
   o.style.display = V.m < 16 ? '' : 'none';
   w.style.setProperty('--vm', V.m.toFixed(3));
+  const nl = document.getElementById('l-not'); if (nl) nl.style.setProperty('--vm', V.m.toFixed(3));   // karteczki notatek: stały rozmiar na ekranie
   w.style.display = V.m < 2.6 ? '' : 'none';
   o.style.opacity = V.m < 2.6 ? .55 : 1;
   // kamienie dopiero od skali, przy której kropki się nie zlewają; numery jeszcze bliżej
@@ -1161,6 +1175,7 @@ function dotkniecie(px, py){
   let [x, y] = swiat(px, py);
   const kam = najblizszyKamien(x, y);
   if (MI.on){ if (MI.slad) return; if (kam){ x = kam.x; y = kam.y; } MI.pts.push([x, y]); rysujMier(); return; }   // w trakcie śladu dotknięcia nie dokładają punktów
+  const nt = trafNot(x, y); if (nt){ otworzKarte(nt); doNotatek(); return; }   // karteczka notatki: od razu karta na notatkach
   const prevObr = OBR; if (OBR){ OBR = null; rysujSel(); }
   // mój punkt bliżej niż kamień (albo postawiony na kamieniu przez przyciąganie) wygrywa — inaczej nie dało się go otworzyć ani usunąć (5.11)
   const o = trafMoje(x, y), oBliz = o && o.typ === 'pkt' && (!kam || Math.hypot(o.pts[0][0] - x, o.pts[0][1] - y) <= Math.hypot(kam.x - x, kam.y - y));
@@ -2000,11 +2015,87 @@ if ('serviceWorker' in navigator && location.protocol === 'https:'){
 document.addEventListener('visibilitychange', async () => {
   if (document.visibilityState !== 'visible' || !G) return;
   try { MOJE = await idbGet('moje') || []; rysujMoje(); if (ARK === 'moje') panelMoje(); } catch (e) {}
+  try { NOT = await idbGet('notatki') || []; rysujNot(); if (ARK === 'not') panelNot(); } catch (e) {}
 });
+
+// ---- notatki na wydzieleniach (19.11): krótki tekst z datą, w pamięci telefonu (IndexedDB 'notatki'), nigdzie nie wysyłany.
+// Na mapie mała żółta karteczka przy napisie wydzielenia; dotknięcie otwiera kartę od razu na notatkach. Kopia: ☰ → Notatki → Zapisz kopię.
+let NOT = [], NOTED = null;   // NOTED: id poprawianej notatki albo 'nowa'
+async function zmienNot(fn){
+  try { NOT = await idbGet('notatki') || []; } catch (e) {}   // świeży odczyt, jak przy moich obiektach (dwa okna mapy)
+  fn();
+  try { if (navigator.storage && navigator.storage.persist) await navigator.storage.persist(); } catch (e) {}
+  await idbPut('notatki', NOT);
+}
+const notWydz = k => NOT.filter(n => n.k === k).sort((a, b) => (b.z || b.d).localeCompare(a.z || a.d));
+// karteczka nad prawym górnym rogiem napisu wydzielenia; położenie w px ekranu, przeliczane skalą --vm
+const NOT_DX = 12, NOT_DY = 18;
+function rysujNot(){
+  const el = document.getElementById('l-not'); if (!el || !G) return;
+  el.innerHTML = [...new Set(NOT.map(n => n.k))].map(k => {
+    const f = G.W.get(k) || G.O.get(k); if (!f || !f.lp) return '';
+    return `<g transform='translate(${f.lp.x.toFixed(1)} ${(-f.lp.y).toFixed(1)})'><g class='lw'><g transform='translate(${NOT_DX} ${-NOT_DY})'>` +
+      `<path class='not-c' d='M-7 -7h14v9l-5 5h-9z'/><path class='not-k' d='M-7 -7h14v9l-5 5h-9z'/><path class='not-r' d='M2 7v-5h5z'/><path class='not-l' d='M-4 -3.5h8M-4 -.5h8M-4 2.5h4'/></g></g></g>`;
+  }).join('');
+  podpisy();
+}
+function trafNot(x, y){
+  let best = null, bd = 17 * V.m;
+  for (const k of new Set(NOT.map(n => n.k))){
+    const f = G.W.get(k) || G.O.get(k); if (!f || !f.lp) continue;
+    const d = Math.hypot(f.lp.x + NOT_DX * V.m - x, f.lp.y + NOT_DY * V.m - y); if (d < bd){ bd = d; best = k; }
+  }
+  return best;
+}
+function sekcjaNot(k){
+  const ed = n => `<textarea id='notTxt' class='pole' rows='3' maxlength='600' placeholder='np. siatka do naprawy, drewno przy drodze, gniazdo'>${esc(n ? n.t : '')}</textarea>` +
+    `<div style='display:flex;gap:8px;margin-bottom:6px'><button class='btn main' onclick="notZapisz('${esc(k)}')">Zapisz</button><button class='btn' onclick='NOTED=null;rysujKarte()'>Anuluj</button></div>`;
+  return `<div id='kt-not' class='nots'>` + notWydz(k).map(n => NOTED === n.id ? ed(n) :
+      `<div class='not'><div class='not-t'>${esc(n.t).replace(/\n/g, '<br>')}</div><div class='not-s'><span class='op'>${dataPl(n.d)}${n.z && n.z !== n.d ? ' · poprawiona ' + dataPl(n.z) : ''}</span>` +
+      `<button onclick="NOTED='${n.id}';rysujKarte();notFokus()" aria-label='Popraw notatkę'>✎</button><button onclick="notUsun('${n.id}')" aria-label='Usuń notatkę'>🗑</button></div></div>`).join('') +
+    (NOTED === 'nowa' ? ed(null) : `<button class='btn not-dod' onclick="NOTED='nowa';rysujKarte();notFokus()">📝 Dodaj notatkę</button>`) + `</div>`;
+}
+function notFokus(){ setTimeout(() => { const t = document.getElementById('notTxt'); if (!t) return; t.scrollIntoView({block:'center'}); t.focus(); t.setSelectionRange(t.value.length, t.value.length); }, 60); }
+// przewija kartę do notatek, zostawiając nad nimi adres wydzielenia (h2)
+function doNotatek(){ setTimeout(() => { const a = document.getElementById('ark'), e = document.getElementById('kt-not'), h = a && a.querySelector('h2'); if (a && e) a.scrollTo({top:Math.max(0, a.scrollTop + e.getBoundingClientRect().top - a.getBoundingClientRect().top - (h ? h.offsetHeight + 22 : 48)), behavior:'smooth'}); }, 230); }
+async function notZapisz(k){
+  const s = ((document.getElementById('notTxt') || {}).value || '').trim(), id = NOTED; NOTED = null;
+  if (s) try { await zmienNot(() => { const n = NOT.find(q => q.id === id); if (n){ if (n.t !== s){ n.t = s; n.z = dzis(); } } else NOT.push({id:'n' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), k, t:s, d:dzis()}); }); }
+    catch (e) { alert('Nie udało się zapisać notatki: ' + (e && e.message || e)); }
+  rysujNot(); rysujKarte(); doNotatek();
+}
+async function notUsun(id){
+  if (!confirm('Usunąć tę notatkę?')) return;
+  try { await zmienNot(() => { NOT = NOT.filter(q => q.id !== id); }); } catch (e) { alert('Nie udało się usunąć: ' + (e && e.message || e)); }
+  rysujNot(); if (ARK === 'not') panelNot(); else { rysujKarte(); doNotatek(); }
+}
+// lista wszystkich notatek (☰ → Notatki), najnowsze na górze; kopia do pliku i wczytanie kopii (scalanie po id, nowsza zmiana wygrywa)
+function panelNot(kom){
+  const l = NOT.slice().sort((a, b) => (b.z || b.d).localeCompare(a.z || a.d));
+  otworzArk('not', `<h2>Notatki</h2>${kom || ''}` +
+    (l.length ? l.map(n => `<button class='wyn' onclick="idzDo('${esc(n.k)}');doNotatek()"><b>${esc(krotki(n.k))}</b> <span class='op'>${dataPl(n.z || n.d)}</span><br><span style='font-size:14px'>${esc(n.t.length > 90 ? n.t.slice(0, 90) + '…' : n.t)}</span></button>`).join('')
+      : `<p class='nota'>Nie ma jeszcze notatek. Otwórz kartę wydzielenia i dotknij „📝 Dodaj notatkę”.</p>`) +
+    `<div style='display:flex;gap:8px;flex-wrap:wrap;margin-top:12px'><button class='btn' onclick='notEksport()' ${l.length ? '' : 'disabled'}>Zapisz kopię</button><button class='btn' onclick='notImport()'>Wczytaj kopię</button></div>` +
+    `<p class='nota'>Notatki są tylko w tym telefonie i nigdzie nie są wysyłane. Wyczyszczenie danych Chrome je kasuje, więc co jakiś czas zapisz kopię (plik .json w Pobranych).</p>`);
+}
+function notEksport(){ pobierz(JSON.stringify({notatki:NOT, zapisano:dzis()}, null, 1), 'notatki-mapa-' + dzis() + '.json', 'application/json'); }
+function notImport(){
+  const i = document.createElement('input'); i.type = 'file'; i.accept = '.json,application/json';
+  i.onchange = async () => {
+    try {
+      const j = JSON.parse(await i.files[0].text()), l = Array.isArray(j) ? j : j.notatki || []; let ile = 0;
+      await zmienNot(() => { for (const n of l){ if (!n || !n.id || !n.k || !n.t || !n.d) continue; const s = NOT.find(q => q.id === n.id);
+        if (!s){ NOT.push(n); ile++; } else if ((n.z || n.d) > (s.z || s.d)){ Object.assign(s, n); ile++; } } });
+      rysujNot(); panelNot(`<p class='ok'>Wczytane albo zaktualizowane: ${ile}</p>`);
+    } catch (e) { alert('To nie jest plik z notatkami mapy.'); }
+  };
+  i.click();
+}
 
 // ---- start: ostatnia paczka z pamięci telefonu, a jak jej nie ma — ekran wyboru ----------------------
 (async () => {
   ekranStartowy();
+  try { NOT = await idbGet('notatki') || []; } catch (e) { console.warn(e); }
   try { MOJE = await idbGet('moje') || []; WPLIKI = (await idbGet('warstwy') || []).map(przygotujWarstwe); } catch (e) { console.warn(e); }
   try {
     const z = await idbGet('zip');
