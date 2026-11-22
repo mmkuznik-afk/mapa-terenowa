@@ -926,9 +926,9 @@ function pkRozmiar(){
   const c = document.querySelector('#l-pk .pk-c'), k = document.querySelector('#l-pk .pk-k'), s = pkSkala();
   if (c){ c.style.strokeWidth = (14 * s * V.m).toFixed(2); k.style.strokeWidth = (10 * s * V.m).toFixed(2); }
 }
-function trafPk(x, y){
+function trafPk(x, y, r = 16){
   if (!ST.pk || !G.pk) return null;
-  let best = null, bd = 16 * V.m;
+  let best = null, bd = r * V.m;
   for (const p of G.pk){ const d = Math.hypot(p.x - x, p.y - y); if (d < bd){ bd = d; best = p; } }
   return best;
 }
@@ -1161,6 +1161,16 @@ function dopasuj(bb, zapas = 1.08){
   V.m = ogr(Math.max(w / r.w, h / r.h) * zapas);
   ustawWidok();
 }
+// chwyt do przesuwania (22.11): promień trafienia, tolerancja drgnięcia palca i czas przytrzymania
+const ND_R = 24, ND_TOL = 14, ND_T = 400;
+function ndCel(x, y){
+  const odl = (px, py) => Math.hypot(px - x, py - y), c = [];
+  const k = trafNot(x, y, ND_R); if (k){ const p = notPkt(k); c.push({k, b:null, pk:null, d:p ? odl(p[0], p[1]) : 0}); }
+  const bu = trafBud(x, y, ND_R); if (bu) c.push({k:null, b:bu.id, pk:null, d:odl(bu.p[0], bu.p[1])});
+  const pk = trafPk(x, y, ND_R); if (pk) c.push({k:null, b:null, pk, d:odl(pk.x, pk.y)});
+  if (!c.length) return null;
+  c.sort((a, b) => a.d - b.d); const {d, ...w} = c[0]; return w;
+}
 function podepnijMape(){
   const km = document.getElementById('mapa'), pts = new Map();
   let drag = null, pinch = null, nd = null;   // nd: przytrzymana karteczka notatki {k, …}, budka {b, …} albo kropka PK {pk, …}; x, y, t, on
@@ -1175,12 +1185,10 @@ function podepnijMape(){
     km.setPointerCapture(e.pointerId); pts.set(e.pointerId, [e.clientX, e.clientY]);
     if (pts.size === 1){
       startDrag(e.clientX, e.clientY);
-      // karteczka notatki: przytrzymanie ok. 0,45 s = przesuwanie (19.11); ruch palca wcześniej = zwykłe przesuwanie mapy
-      const k = !MI.on && trafNot(...swiat(e.clientX, e.clientY));
-      const bu = !k && !MI.on && trafBud(...swiat(e.clientX, e.clientY));   // budka lęgowa: ten sam gest (22.11)
-      const b = bu ? bu.id : null;
-      const pk = !k && !b && !MI.on && trafPk(...swiat(e.clientX, e.clientY));   // kropka PK jesiennych poszukiwań: ten sam gest (19.11)
-      if (k || b || pk){ nd = {k, b, pk, x:e.clientX, y:e.clientY, on:false}; nd.t = setTimeout(() => { if (!nd) return; nd.on = true; drag = null; if (nd.b) BUDD = nd.b; else if (nd.pk) PKD = nd.pk; else NOTD = nd.k; try { navigator.vibrate && navigator.vibrate(35); } catch (er) {} ndRusz(nd.x, nd.y); }, 450); }
+      // przytrzymanie karteczki notatki (19.11), budki (22.11) albo kropki PK jesiennych poszukiwań (19.11) = przesuwanie; ruch palca wcześniej = zwykłe przesuwanie mapy
+      // 22.11 („trudno złapać”): bierze NAJBLIŻSZY z trzech obiektów (wcześniej karteczka i budka miały pierwszeństwo przed kropką), promień chwytu ND_R px
+      const nd0 = MI.on ? null : ndCel(...swiat(e.clientX, e.clientY));
+      if (nd0){ nd = {...nd0, x:e.clientX, y:e.clientY, on:false}; nd.t = setTimeout(() => { if (!nd) return; nd.on = true; drag = null; if (nd.b) BUDD = nd.b; else if (nd.pk) PKD = nd.pk; else NOTD = nd.k; try { navigator.vibrate && navigator.vibrate(35); } catch (er) {} ndRusz(nd.x, nd.y); }, ND_T); }
     }
     else if (pts.size === 2){
       ndStop(true);
@@ -1193,7 +1201,8 @@ function podepnijMape(){
     pts.set(e.pointerId, [e.clientX, e.clientY]);
     if (nd){
       if (nd.on){ ndRusz(e.clientX, e.clientY); return; }
-      if (Math.hypot(e.clientX - nd.x, e.clientY - nd.y) >= 8) ndStop(false);
+      if (Math.hypot(e.clientX - nd.x, e.clientY - nd.y) >= ND_TOL) ndStop(false);
+      else return;   // drgnięcie palca w czasie przytrzymania nie rusza mapy i nie przerywa chwytu
     }
     if (pinch && pts.size === 2){
       const [a, b] = [...pts.values()], d = Math.hypot(a[0] - b[0], a[1] - b[1]), mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2, r = rozmiar();
@@ -2119,8 +2128,8 @@ function rysujNot(){
   }).join('');
   podpisy();
 }
-function trafNot(x, y){
-  let best = null, bd = 17 * V.m;
+function trafNot(x, y, r = 17){
+  let best = null, bd = r * V.m;
   for (const k of new Set(NOT.map(n => n.k))){
     const p = notPkt(k); if (!p) continue;
     const d = Math.hypot(p[0] - x, p[1] - y); if (d < bd){ bd = d; best = k; }
@@ -2209,9 +2218,9 @@ function rysujBud(){
   }).join('');
   podpisy();
 }
-function trafBud(x, y){
+function trafBud(x, y, r = 16){
   if (!ST.bud || V.m >= BUD_ZOOM) return null;
-  let best = null, bd = 16 * V.m;
+  let best = null, bd = r * V.m;
   for (const b of BUD){ const d = Math.hypot(b.p[0] - x, b.p[1] - y); if (d < bd){ bd = d; best = b; } }
   return best;
 }
