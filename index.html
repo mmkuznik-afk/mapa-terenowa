@@ -1181,7 +1181,7 @@ function podepnijMape(){
       // budka lęgowa: ten sam gest (22.11), sprawdzana na końcu — karteczki i kropki PK łapią się dokładnie jak przed budkami
       const bu = !k && !pk && !MI.on && trafBud(...swiat(e.clientX, e.clientY));
       const b = bu ? bu.id : null;
-      if (k || b || pk){ nd = {k, b, pk, x:e.clientX, y:e.clientY, on:false}; nd.t = setTimeout(() => { if (!nd) return; nd.on = true; drag = null; if (nd.b) BUDD = nd.b; else if (nd.pk) PKD = nd.pk; else NOTD = nd.k; try { navigator.vibrate && navigator.vibrate(35); } catch (er) {} ndRusz(nd.x, nd.y); }, 450); }
+      if (k || b || pk){ nd = {k, b, pk, x:e.clientX, y:e.clientY, on:false}; nd.t = setTimeout(() => { if (!nd) return; nd.on = true; drag = null; if (GPS.sledz){ GPS.sledz = false; odswiezGpsBtn(); }   /* 22.11: śledzenie GPS przesuwało mapę spod przeciąganej kropki */ if (nd.b) BUDD = nd.b; else if (nd.pk) PKD = nd.pk; else NOTD = nd.k; try { navigator.vibrate && navigator.vibrate(35); } catch (er) {} ndRusz(nd.x, nd.y); }, 450); }
     }
     else if (pts.size === 2){
       ndStop(true);
