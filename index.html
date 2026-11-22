@@ -51,6 +51,13 @@ button,select,input,textarea{font:inherit;color:inherit}
 .not-s{display:flex;align-items:center;gap:2px;margin-top:2px}.not-s .op{flex:1;color:#76672a}
 .not-s button{border:0;background:none;font-size:16px;cursor:pointer;padding:3px 7px;color:#4a3f10}
 .not-dod{width:100%}
+/* budki lęgowe (22.11): mała brązowa budka z białą obwódką, stały rozmiar na ekranie */
+#l-bud{pointer-events:none}
+.bud-c{fill:none;stroke:#fff;stroke-width:3.2;stroke-linejoin:round}
+.bud-b{fill:#a0682f;stroke:#3b2207;stroke-width:1;stroke-linejoin:round}
+.bud-r{fill:#5c3511;stroke:#3b2207;stroke-width:1;stroke-linejoin:round}
+.bud-o{fill:#241303}
+.buds{margin:10px 0 4px}
 .dal .w:not(.plan):not(.wyk){stroke-opacity:.4}.dal .droga{stroke-opacity:.45}.dal .ciek{stroke-opacity:.7}
 /* punkty graniczne (gr_pkt): kropka stałej wielkości na ekranie = odcinek zerowej długości z okrągłym końcem */
 .gr{fill:none;stroke-linecap:round}
@@ -662,11 +669,11 @@ function szacHtml(s){
 // ---- mapa terenowa (2026-11-03): reszta pisana od nowa pod telefon --------------------------
 let M = null, G = null;
 const V = {cx:0, cy:0, m:5};          // środek widoku (PL-1992) i metry na piksel ekranu
-const ST = {rok:0, cz:new Map(), status:'all', kontrRok:0, pk:true, gr:true, grNr:true, moje:true, zew:false, szk:new Set(), pz:new Set()};
+const ST = {rok:0, cz:new Map(), status:'all', kontrRok:0, pk:true, gr:true, grNr:true, moje:true, bud:true, zew:false, szk:new Set(), pz:new Set()};
 const GPS = {id:null, sledz:false, p:null, k:null};
 let KARTA = null, ARK = '';
 const LS = 'mapaTeren.v1';
-function zapiszUst(){ try { localStorage.setItem(LS, JSON.stringify({rok:ST.rok, cz:[...ST.cz.keys()], status:ST.status, pk:ST.pk, gr:ST.gr, grNr:ST.grNr, moje:ST.moje, zew:ST.zew, szk:[...ST.szk], pz:[...ST.pz]})); } catch (e) {} }
+function zapiszUst(){ try { localStorage.setItem(LS, JSON.stringify({rok:ST.rok, cz:[...ST.cz.keys()], status:ST.status, pk:ST.pk, gr:ST.gr, grNr:ST.grNr, moje:ST.moje, bud:ST.bud, zew:ST.zew, szk:[...ST.szk], pz:[...ST.pz]})); } catch (e) {} }
 function wczytajUst(){ try { return JSON.parse(localStorage.getItem(LS) || 'null'); } catch (e) { return null; } }
 function kolorCz(cz){ return PALETA[ST.cz.get(cz) % PALETA.length]; }
 
@@ -813,6 +820,7 @@ async function wczytaj(file, zapamietaj){
     if (u && typeof u.gr === 'boolean') ST.gr = u.gr;
     if (u && typeof u.grNr === 'boolean') ST.grNr = u.grNr;
     if (u && typeof u.moje === 'boolean') ST.moje = u.moje;
+    if (u && typeof u.bud === 'boolean') ST.bud = u.bud;
     if (u && typeof u.zew === 'boolean') ST.zew = u.zew;
     ST.szk = new Set((u && Array.isArray(u.szk) ? u.szk : []).filter(id => M.szk[id]));
     ST.pz = new Set((u && Array.isArray(u.pz) ? u.pz : []).filter(id => PACZ.some(p => p.id === id)));
@@ -842,7 +850,7 @@ function budujUklad(){
     <defs><clipPath id='granica'>${G.les.map(f => `<path d='${f.d}'/>`).join('')}</clipPath></defs>
     <g id='l-pzS' clip-path='url(#granica)'></g><g id='l-wydz'></g><g id='l-pzO' clip-path='url(#granica)'></g><g id='l-szkP'></g><g id='l-cieki' clip-path='url(#granica)'></g><g id='l-drogi' clip-path='url(#granica)'></g><g id='l-pzD' clip-path='url(#granica)'></g>
     <g id='l-oddz'></g><g id='l-les'></g><g id='l-szkL'></g><g id='l-war'></g><g id='l-sel'></g><g id='l-szkD'></g><g id='l-pzI'></g><g id='l-gr'></g><g id='l-pk'></g><g id='l-moje'></g><g id='l-wyb'></g><g id='l-mier'></g>
-    <g id='l-labW' class='lab'></g><g id='l-grLab' class='lab lab-g'></g><g id='l-mojeLab' class='lab lab-m'></g><g id='l-labO' class='lab lab-o'></g><g id='l-not'></g><g id='l-cel'></g><g id='l-gps'></g>
+    <g id='l-labW' class='lab'></g><g id='l-grLab' class='lab lab-g'></g><g id='l-mojeLab' class='lab lab-m'></g><g id='l-labO' class='lab lab-o'></g><g id='l-not'></g><g id='l-bud'></g><g id='l-cel'></g><g id='l-gps'></g>
   </svg></div>
   <div class='gora'>
     <div class='rok'><button onclick='rokKrok(-1)' aria-label='Poprzedni rok'>‹</button><select id='rok' onchange='ustawRok(+this.value)'>${M.lata.map(r => `<option value='${r}'${r === ST.rok ? ' selected' : ''}>${r}</option>`).join('')}</select><button onclick='rokKrok(1)' aria-label='Następny rok'>›</button></div>
@@ -854,11 +862,12 @@ function budujUklad(){
   </div>
   <div class='prawo'><button onclick='zoomKrok(1/1.6)' aria-label='Przybliż'>+</button><button onclick='zoomKrok(1.6)' aria-label='Oddal'>−</button>
     <button onclick='dopasuj(G.bb)' aria-label='Całe leśnictwo'>⌂</button><button id='bGps' onclick='gpsPrzelacz()' aria-label='Moja pozycja'>📍</button>
-    <button id='bMier' onclick='mierzPrzelacz()' aria-label='Pomiar długości i powierzchni'>📏</button></div>
+    <button id='bMier' onclick='mierzPrzelacz()' aria-label='Pomiar długości i powierzchni'>📏</button>
+    <button id='bBud' onclick='budTutaj()' aria-label='Budka lęgowa w mojej pozycji'>🏠</button></div>
   <div class='dol'><div id='mier' class='mier'></div><div id='cel' class='cel' onclick='celPokaz()'></div><div id='gdzie' class='gdzie' onclick='if(GPS.k)otworzKarte(GPS.k)'></div><div id='leg' class='leg'></div></div>
   <div id='ark' class='ark'><div class='uchwyt' onclick='zamknijArk()'></div><button class='x' onclick='zamknijArk()' aria-label='Zamknij'>×</button><div id='arkT'></div></div>`;
   rysujPodklad();
-  rysujPacz(); rysujWarstwy(); rysujMoje(); rysujMier(); rysujSzk(); rysujCel(); rysujNot();
+  rysujPacz(); rysujWarstwy(); rysujMoje(); rysujMier(); rysujSzk(); rysujCel(); rysujNot(); rysujBud();
   koloruj();
   podepnijMape();
   dopasuj(G.bb);
@@ -992,10 +1001,12 @@ function wyczysc(){ ST.cz.clear(); koloruj(); zapiszUst(); panelZabiegi(); }
 
 // ---- arkusze ------------------------------------------------------------------------------
 function otworzArk(rodzaj, html){
+  if (rodzaj !== 'budka' && BUDW){ BUDW = null; rysujBud(); }
   ARK = rodzaj; document.getElementById('arkT').innerHTML = html;
   const a = document.getElementById('ark'); a.classList.add('on'); a.scrollTop = 0;
 }
 function zamknijArk(){
+  if (BUDW){ BUDW = null; rysujBud(); }
   ARK = ''; KARTA = null; OBR = null; PUNKT = null; WYBM = null; OBW = null; document.getElementById('ark').classList.remove('on'); rysujSel();
   const wyb = document.getElementById('grWyb'); if (wyb) wyb.setAttribute('d', '');
   podswietl(null);
@@ -1054,6 +1065,7 @@ function panelInfo(kom){
       return `<label class='przel'><input type='checkbox' ${ST.pz.has(p.id) ? 'checked' : ''} ${n ? '' : 'disabled'} onchange="pzPrzel('${p.id}',this.checked)"> ${p.nazwa} <span class='op'>${n ? n + ' ' + obiektow(n) : 'brak w paczce'}</span></label>`; }).join('')}
     <p class='nota'>Siedliska, ochrona przyrody i drogi z Leśnej Mapy Numerycznej w paczce. Dotknięcie mapy pokazuje, co leży w tym miejscu.</p>
     <div class='wrs'><span class='kw' style='background:#ffe45c'></span><span class='nz'>Notatki na wydzieleniach <span class='op'>${NOT.length}</span></span><button class='btn' style='font-size:14px;color:inherit' onclick='panelNot()'>Lista ›</button></div>
+    <div class='wrs'><input type='checkbox' ${ST.bud ? 'checked' : ''} onchange='ST.bud=this.checked;zapiszUst();rysujBud()' aria-label='Pokaż budki lęgowe'><span class='kw' style='background:#a0682f'></span><span class='nz'>Budki lęgowe <span class='op'>${BUD.length}</span></span><button class='btn' style='font-size:14px;color:inherit' onclick='panelBud()'>Lista ›</button></div>
     <div class='wrs'><input type='checkbox' ${ST.moje ? 'checked' : ''} onchange='ST.moje=this.checked;zapiszUst();rysujMoje()' aria-label='Pokaż moje obiekty'><span class='kw' style='background:#a6ff00'></span><span class='nz'>Moje punkty i pomiary <span class='op'>${MOJE.length}</span></span><button class='btn' style='font-size:14px;color:inherit' onclick='panelMoje()'>Lista ›</button></div>
     ${WPLIKI.map(w => `<div class='wrs'><input type='checkbox' ${w.wid ? 'checked' : ''} onchange="wPrzel('${w.id}',this.checked)" aria-label='Pokaż warstwę'><span class='kw' style='background:${w.kol}' onclick="wKolor('${w.id}')" title='Zmień kolor'></span><span class='nz'>${esc(w.nazwa)} <span class='op'>${w.f.length}</span></span><button onclick="wPokaz('${w.id}')" aria-label='Pokaż na mapie'>◎</button><button onclick="wUsun('${w.id}')" aria-label='Usuń warstwę'>🗑</button></div>`).join('')}
     <div style='margin-top:12px'><button class='btn' onclick='dodajWarstwe()'>＋ Dodaj warstwę z pliku</button></div>
@@ -1076,7 +1088,7 @@ function rysujKarte(){
   const tu = GPS.k === k ? ` <span class='op'>· tu jesteś</span>` : '';
   otworzArk('karta', `<h2>${esc(krotki(k))}${tu}</h2>` +
     (pr.length ? pr.map(pozDuza).join('') : `<div class='op' style='margin:8px 0'>w ${ST.rok} nic w planie</div>`) +
-    sekcjaNot(k) + opisWydz(k) + `<div style='margin-top:14px;display:flex;gap:8px;flex-wrap:wrap'><button class='btn' onclick="pokazNaMapie(G.W.get('${esc(k)}').bb)">◎ Pokaż na mapie</button>` +
+    sekcjaNot(k) + sekcjaBud(k) + opisWydz(k) + `<div style='margin-top:14px;display:flex;gap:8px;flex-wrap:wrap'><button class='btn' onclick="pokazNaMapie(G.W.get('${esc(k)}').bb)">◎ Pokaż na mapie</button>` +
     (f && f.lp && GPS.k !== k ? btnProw(f.lp.x, f.lp.y, krotki(k)) : '') + `</div>`);
 }
 // pozycja roku na górze karty (leśniczy 5.11): kolor z mapy, wykonanie / plan dużymi cyframi i procent wykonania
@@ -1110,6 +1122,7 @@ function podpisy(){
   o.style.display = V.m < 16 ? '' : 'none';
   w.style.setProperty('--vm', V.m.toFixed(3));
   const nl = document.getElementById('l-not'); if (nl) nl.style.setProperty('--vm', V.m.toFixed(3));   // karteczki notatek: stały rozmiar na ekranie
+  const bl = document.getElementById('l-bud'); if (bl){ bl.style.setProperty('--vm', V.m.toFixed(3)); bl.style.display = V.m < BUD_ZOOM ? '' : 'none'; }   // budki: po przybliżeniu
   w.style.display = V.m < 2.6 ? '' : 'none';
   o.style.opacity = V.m < 2.6 ? .55 : 1;
   // kamienie dopiero od skali, przy której kropki się nie zlewają; numery jeszcze bliżej
@@ -1150,11 +1163,11 @@ function dopasuj(bb, zapas = 1.08){
 }
 function podepnijMape(){
   const km = document.getElementById('mapa'), pts = new Map();
-  let drag = null, pinch = null, nd = null;   // nd: przytrzymana karteczka notatki {k, …} albo kropka PK {pk, …}; x, y, t, on
+  let drag = null, pinch = null, nd = null;   // nd: przytrzymana karteczka notatki {k, …}, budka {b, …} albo kropka PK {pk, …}; x, y, t, on
   km.addEventListener('contextmenu', e => e.preventDefault());   // przytrzymanie palcem nie otwiera menu przeglądarki
-  const ndCofnij = () => { if (nd.pk){ PKD = null; PKP = null; rysujPk(); } else { delete NOTP[nd.k]; NOTD = null; rysujNot(); } };
+  const ndCofnij = () => { if (nd.b){ BUDD = null; BUDP = null; rysujBud(); } else if (nd.pk){ PKD = null; PKP = null; rysujPk(); } else { delete NOTP[nd.k]; NOTD = null; rysujNot(); } };
   const ndStop = przywroc => { if (!nd) return; clearTimeout(nd.t); if (nd.on && przywroc) ndCofnij(); nd = null; };
-  const ndRusz = (x, y) => nd.pk ? pkPrzenies(x, y) : notPrzenies(x, y);
+  const ndRusz = (x, y) => nd.b ? budPrzenies(x, y) : nd.pk ? pkPrzenies(x, y) : notPrzenies(x, y);
   km.addEventListener('wheel', e => { e.preventDefault(); zoomW(e.deltaY < 0 ? 1 / 1.2 : 1.2, e.clientX, e.clientY); }, {passive:false});
   const startDrag = (x, y) => { drag = {x, y, cx:V.cx, cy:V.cy, ruch:false}; };
   km.addEventListener('pointerdown', e => {
@@ -1164,8 +1177,10 @@ function podepnijMape(){
       startDrag(e.clientX, e.clientY);
       // karteczka notatki: przytrzymanie ok. 0,45 s = przesuwanie (19.11); ruch palca wcześniej = zwykłe przesuwanie mapy
       const k = !MI.on && trafNot(...swiat(e.clientX, e.clientY));
-      const pk = !k && !MI.on && trafPk(...swiat(e.clientX, e.clientY));   // kropka PK jesiennych poszukiwań: ten sam gest (19.11)
-      if (k || pk){ nd = {k, pk, x:e.clientX, y:e.clientY, on:false}; nd.t = setTimeout(() => { if (!nd) return; nd.on = true; drag = null; if (nd.pk) PKD = nd.pk; else NOTD = nd.k; try { navigator.vibrate && navigator.vibrate(35); } catch (er) {} ndRusz(nd.x, nd.y); }, 450); }
+      const bu = !k && !MI.on && trafBud(...swiat(e.clientX, e.clientY));   // budka lęgowa: ten sam gest (22.11)
+      const b = bu ? bu.id : null;
+      const pk = !k && !b && !MI.on && trafPk(...swiat(e.clientX, e.clientY));   // kropka PK jesiennych poszukiwań: ten sam gest (19.11)
+      if (k || b || pk){ nd = {k, b, pk, x:e.clientX, y:e.clientY, on:false}; nd.t = setTimeout(() => { if (!nd) return; nd.on = true; drag = null; if (nd.b) BUDD = nd.b; else if (nd.pk) PKD = nd.pk; else NOTD = nd.k; try { navigator.vibrate && navigator.vibrate(35); } catch (er) {} ndRusz(nd.x, nd.y); }, 450); }
     }
     else if (pts.size === 2){
       ndStop(true);
@@ -1197,7 +1212,7 @@ function podepnijMape(){
   });
   const koniec = e => {
     if (nd && nd.on){ const n = nd; ndStop(false); pts.delete(e.pointerId); drag = null;
-      if (e.type === 'pointerup'){ if (n.pk) pkUpusc(); else notUpusc(n.k); } else { nd = n; ndCofnij(); nd = null; } return; }
+      if (e.type === 'pointerup'){ if (n.b) budUpusc(); else if (n.pk) pkUpusc(); else notUpusc(n.k); } else { nd = n; ndCofnij(); nd = null; } return; }
     ndStop(false);
     if (e.type === 'pointerup' && drag && !drag.ruch && pts.size === 1) dotkniecie(e.clientX, e.clientY);
     pts.delete(e.pointerId);
@@ -1228,6 +1243,7 @@ function dotkniecie(px, py){
   const kam = najblizszyKamien(x, y);
   if (MI.on){ if (MI.slad) return; if (kam){ x = kam.x; y = kam.y; } MI.pts.push([x, y]); rysujMier(); return; }   // w trakcie śladu dotknięcia nie dokładają punktów
   const nt = trafNot(x, y); if (nt){ otworzKarte(nt); doNotatek(); return; }   // karteczka notatki: od razu karta na notatkach
+  const bu = trafBud(x, y); if (bu){ otworzBud(bu.id); return; }   // budka lęgowa: jej karta
   const prevObr = OBR; if (OBR){ OBR = null; rysujSel(); }
   // mój punkt bliżej niż kamień (albo postawiony na kamieniu przez przyciąganie) wygrywa — inaczej nie dało się go otworzyć ani usunąć (5.11)
   const o = trafMoje(x, y), oBliz = o && o.typ === 'pkt' && (!kam || Math.hypot(o.pts[0][0] - x, o.pts[0][1] - y) <= Math.hypot(kam.x - x, kam.y - y));
@@ -2068,6 +2084,7 @@ document.addEventListener('visibilitychange', async () => {
   if (document.visibilityState !== 'visible' || !G) return;
   try { MOJE = await idbGet('moje') || []; rysujMoje(); if (ARK === 'moje') panelMoje(); } catch (e) {}
   try { NOT = await idbGet('notatki') || []; rysujNot(); if (ARK === 'not') panelNot(); } catch (e) {}
+  try { BUD = await idbGet('budki') || []; rysujBud(); if (ARK === 'bud') panelBud(); } catch (e) {}
 });
 
 // ---- notatki na wydzieleniach (19.11): krótki tekst z datą, w pamięci telefonu (IndexedDB 'notatki'), nigdzie nie wysyłany.
@@ -2166,10 +2183,167 @@ function notImport(){
   i.click();
 }
 
+// ---- budki lęgowe (22.11): mała brązowa budka w punkcie z GPS, przypięta do adresu wydzielenia (IndexedDB 'budki', nigdzie nie wysyłane).
+// Dodanie: przycisk 🏠 po prawej = budka w Twojej pozycji. Przytrzymanie budki = przesuwanie; upuszczona w innym wydzieleniu dostaje jego adres
+// (GPS pod okapem myli się o kilka–kilkanaście metrów). Kopia i surowiec do wykazu: ☰ → Budki lęgowe → Zapisz CSV.
+const BUD_TYPY = ['A', 'B', 'D', 'dla puszczyka', 'inna'];
+const BUD_DOK = 15;    // m: przy gorszej dokładności GPS pytanie przed postawieniem budki
+const BUD_ZOOM = 6;    // budki widać od tej skali (m/px) w dół; w oddaleniu zlewałyby się z zabiegami
+let BUD = [], BUDW = null, BUDD = null, BUDP = null;   // BUDW: budka z otwartą kartą; BUDD: przeciągana; BUDP: jej położenie w trakcie
+async function zmienBud(fn){
+  try { BUD = await idbGet('budki') || []; } catch (e) {}   // świeży odczyt (dwa okna mapy)
+  fn();
+  try { if (navigator.storage && navigator.storage.persist) await navigator.storage.persist(); } catch (e) {}
+  await idbPut('budki', BUD);
+}
+const budWydz = k => BUD.filter(b => b.k === k).sort((a, b) => nat(a.nr || '', b.nr || ''));
+const budAdr = b => b.k ? krotki(b.k) : 'poza wydzieleniami';
+const r1 = v => Math.round(v * 10) / 10;
+function budNastNr(){ let m = 0; for (const b of BUD){ const n = parseInt(b.nr, 10); if (isFinite(n) && n > m) m = n; } return String(m + 1); }
+function rysujBud(){
+  const el = document.getElementById('l-bud'); if (!el || !G) return;
+  const ik = `<path class='bud-c' d='M-6 -.5L0 -6.5L6 -.5H4.5V6H-4.5V-.5Z'/><path class='bud-b' d='M-4.5 -1V6H4.5V-1Z'/><path class='bud-r' d='M-6 -.5L0 -6.5L6 -.5Z'/><circle class='bud-o' cy='2' r='1.5'/>`;
+  el.innerHTML = (ST.bud ? BUD : []).map(b => {
+    const p = BUDD === b.id && BUDP ? BUDP : b.p, s = BUDD === b.id ? 1.4 : BUDW === b.id ? 1.3 : 1;
+    return `<g transform='translate(${p[0].toFixed(1)} ${(-p[1]).toFixed(1)})'><g class='lw'><g transform='scale(${s})'>${ik}</g></g></g>`;
+  }).join('');
+  podpisy();
+}
+function trafBud(x, y){
+  if (!ST.bud || V.m >= BUD_ZOOM) return null;
+  let best = null, bd = 16 * V.m;
+  for (const b of BUD){ const d = Math.hypot(b.p[0] - x, b.p[1] - y); if (d < bd){ bd = d; best = b; } }
+  return best;
+}
+// przeciąganie: budka trochę nad palcem, żeby było ją widać
+function budPrzenies(px, py){ if (!BUDD) return; BUDP = swiat(px, py - 34); rysujBud(); }
+async function budUpusc(){
+  const id = BUDD, q = BUDP; BUDD = null; BUDP = null;
+  const f = q && wydzW(q[0], q[1]);
+  if (!id || !q || !f){ rysujBud(); try { navigator.vibrate && navigator.vibrate([25, 60, 25]); } catch (e) {} return; }   // poza wydzieleniami: wraca
+  let zm = false;
+  try { await zmienBud(() => { const b = BUD.find(z => z.id === id); if (!b) return; zm = b.k !== f.k; b.p = [r1(q[0]), r1(q[1])]; b.k = f.k; b.prz = true; b.z = dzis(); }); }
+  catch (e) { alert('Nie udało się zapisać położenia: ' + (e && e.message || e)); }
+  rysujBud();
+  if (zm) pokazGdzie('🏠 Budka przeniesiona do wydzielenia ' + krotki(f.k));
+  if (ARK === 'budka' && BUDW === id) rysujBudKarte(); else if (ARK === 'karta') rysujKarte();
+}
+// 🏠: budka w pozycji z GPS; adres wydzielenia przypisuje się sam
+async function budTutaj(){
+  if (MI.on) return pokazGdzie('🏠 Najpierw wyłącz pomiar 📏.', true);
+  if (!GPS.p){
+    if (GPS.id == null) gpsPrzelacz();
+    pokazGdzie('🏠 Czekam na GPS. Dotknij 🏠 jeszcze raz, gdy pojawi się turkusowa kropka.', true); return;
+  }
+  const x = GPS.p.x, y = GPS.p.y, acc = accPom() || 0, f = wydzW(x, y), uw = [];
+  if (acc > BUD_DOK) uw.push(`GPS ma teraz dokładność ±${fn(Math.round(acc))} m, więc budka może trafić do sąsiedniego wydzielenia.`);
+  if (!f) uw.push('Twoja pozycja wypada poza wydzieleniami, więc budka nie dostanie adresu leśnego.');
+  if (uw.length && !confirm(uw.join('\n') + '\n\nPostawić budkę mimo to? Potem możesz ją przesunąć przytrzymaniem.')) return;
+  const b = {id:'b' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), k:f ? f.k : null, p:[r1(x), r1(y)], acc:r1(acc), d:dzis()};
+  try { await zmienBud(() => { b.nr = budNastNr(); b.typ = BUD.length ? BUD[BUD.length - 1].typ || '' : ''; BUD.push(b); }); }   // typ jak w poprzedniej budce
+  catch (e) { alert('Nie udało się zapisać budki: ' + (e && e.message || e)); return; }
+  try { navigator.vibrate && navigator.vibrate(35); } catch (e) {}
+  if (!ST.bud){ ST.bud = true; zapiszUst(); }
+  if (V.m >= BUD_ZOOM){ V.m = 2; V.cx = x; V.cy = y; ustawWidok(); }
+  otworzBud(b.id);
+}
+function otworzBud(id){ KARTA = null; PUNKT = null; WYBM = null; OBW = null; OBR = null; podswietl(null); rysujSel(); BUDW = id; rysujBudKarte(); rysujBud(); }
+function rysujBudKarte(kom){
+  const b = BUD.find(z => z.id === BUDW); if (!b){ zamknijArk(); return; }
+  const op = BUD_TYPY.map(t => `<option value='${esc(t)}'${b.typ === t ? ' selected' : ''}>${esc(t)}</option>`).join('') +
+    (b.typ && !BUD_TYPY.includes(b.typ) ? `<option value='${esc(b.typ)}' selected>${esc(b.typ)}</option>` : '');
+  const acc = typeof b.acc === 'number' ? `±${fn(b.acc, b.acc < 10 ? 1 : 0)} m` : 'nie zapisano';
+  otworzArk('budka', `<h2>🏠 Budka nr ${esc(b.nr || '?')} <span class='op'>· ${esc(budAdr(b))}</span></h2>${kom || ''}
+    <label class='op' for='budNr'>Numer</label><input id='budNr' class='pole' value='${esc(b.nr || '')}' maxlength='20' autocomplete='off'>
+    <label class='op' for='budTyp'>Typ</label><select id='budTyp' class='pole'><option value=''>— nie podano —</option>${op}</select>
+    <label class='op' for='budU'>Uwaga</label><textarea id='budU' class='pole' rows='2' maxlength='300' placeholder='np. na dębie, wys. 4 m, wylot na wschód'>${esc(b.u || '')}</textarea>
+    <div style='display:flex;gap:8px;flex-wrap:wrap'><button class='btn main' onclick='budZapisz()'>Zapisz</button>${b.k && G.W.has(b.k) ? `<button class='btn' onclick="otworzKarte('${esc(b.k)}')">Karta wydzielenia</button>` : ''}<button class='btn' onclick='budUsun()'>🗑 Usuń</button></div>
+    <div class='kv' style='margin-top:12px'><span>Dodana</span><span>${dataPl(b.d)}${b.z && b.z !== b.d ? ' · zmieniona ' + dataPl(b.z) : ''}</span>
+      <span>GPS przy dodaniu</span><span>${acc}${b.prz ? ' · potem przesunięta ręcznie' : ''}</span>
+      <span>Od Ciebie</span><span>${odCiebie(b.p[0], b.p[1])}</span>
+      <span>X (północ)</span><span>${fn(b.p[1], 1)}</span><span>Y (wschód)</span><span>${fn(b.p[0], 1)}</span></div>
+    <p class='nota'>Żeby poprawić położenie, przytrzymaj budkę na mapie i przeciągnij. Upuszczona w innym wydzieleniu dostanie jego adres.</p>`);
+}
+async function budZapisz(){
+  const id = BUDW, g = i => ((document.getElementById(i) || {}).value || '').trim();
+  const nr = g('budNr'), typ = g('budTyp'), u = g('budU');
+  try { await zmienBud(() => { const b = BUD.find(z => z.id === id); if (b && (b.nr !== nr || (b.typ || '') !== typ || (b.u || '') !== u)){ Object.assign(b, {nr, typ, u}); b.z = dzis(); } }); }
+  catch (e) { alert('Nie udało się zapisać budki: ' + (e && e.message || e)); }
+  const dup = nr && BUD.filter(b => b.nr === nr).length > 1;
+  rysujBud(); BUDW = id;
+  rysujBudKarte(dup ? `<p class='err'>Numer ${esc(nr)} ma też inna budka. Zapisane, ale popraw numer, jeśli to pomyłka.</p>` : `<p class='ok'>Zapisane</p>`);
+}
+async function budUsun(){
+  const id = BUDW; if (!confirm('Usunąć tę budkę?')) return;
+  try { await zmienBud(() => { BUD = BUD.filter(b => b.id !== id); }); } catch (e) { alert('Nie udało się usunąć: ' + (e && e.message || e)); }
+  zamknijArk(); rysujBud();
+}
+// sekcja w karcie wydzielenia: budki w tym wydzieleniu
+function sekcjaBud(k){
+  const l = budWydz(k); if (!l.length) return '';
+  return `<div class='buds'><b>🏠 Budki lęgowe: ${l.length}</b>` + l.map(b => `<button class='wyn' onclick="otworzBud('${esc(b.id)}')">nr <b>${esc(b.nr || '?')}</b>${b.typ ? ' · ' + esc(b.typ) : ''} <span class='op'>${dataPl(b.d)}</span>` +
+    (b.u ? `<br><span style='font-size:14px'>${esc(b.u.length > 90 ? b.u.slice(0, 90) + '…' : b.u)}</span>` : '') + `</button>`).join('') + `</div>`;
+}
+// lista (☰ → Budki lęgowe): zliczenie według wydzieleń, kopia CSV i wczytanie kopii
+function panelBud(kom){
+  const gr = new Map(); for (const b of BUD){ const k = b.k || ''; if (!gr.has(k)) gr.set(k, []); gr.get(k).push(b); }
+  const kl = [...gr.keys()].sort((a, b) => !a ? 1 : !b ? -1 : nat(a, b));
+  otworzArk('bud', `<h2>Budki lęgowe <span class='op'>${BUD.length} szt.</span></h2>${kom || ''}` +
+    (BUD.length ? kl.map(k => { const l = gr.get(k), nr = l.map(b => b.nr || '?').sort(nat).map(esc).join(', ');
+      return `<button class='wyn' ${k ? `onclick="idzDo('${esc(k)}')"` : 'disabled'}><b>${k ? esc(krotki(k)) : 'poza wydzieleniami'}</b> <span class='op'>${l.length} szt.</span><br><span style='font-size:14px'>nr ${nr}</span></button>`; }).join('')
+      : `<p class='nota'>Nie ma jeszcze budek. Stań przy budce i dotknij 🏠 po prawej stronie mapy.</p>`) +
+    `<div style='display:flex;gap:8px;flex-wrap:wrap;margin-top:12px'><button class='btn' onclick='budEksport()' ${BUD.length ? '' : 'disabled'}>Zapisz CSV</button><button class='btn' onclick='budImport()'>Wczytaj CSV</button></div>` +
+    `<p class='nota'>Budki są tylko w tym telefonie i nigdzie nie są wysyłane. Wyczyszczenie danych Chrome je kasuje, więc co jakiś czas zapisz CSV (plik w Pobranych, otwiera się w Excelu). Ten sam plik wczytany na innym telefonie dokłada brakujące budki, a przy tej samej budce wygrywa nowsza zmiana.</p>`);
+}
+const BUD_KOL = ['id', 'adres_lesny', 'wydzielenie', 'nr', 'typ', 'uwagi', 'data_dodania', 'data_zmiany', 'X_1992_polnoc', 'Y_1992_wschod', 'gps_dokladnosc_m', 'przesunieta_recznie'];
+const csvPole = v => { const t = String(v ?? ''); return /[;"\n\r]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; };
+const przec = (v, d) => typeof v === 'number' && isFinite(v) ? v.toFixed(d).replace('.', ',') : '';   // przecinek dziesiętny dla polskiego Excela
+function budEksport(){
+  const l = BUD.slice().sort((a, b) => nat(a.k || '~', b.k || '~') || nat(a.nr || '', b.nr || ''));
+  const w = [BUD_KOL.join(';'), ...l.map(b => [b.id, b.k || '', b.k ? krotki(b.k) : '', b.nr, b.typ, b.u, b.d, b.z || '', przec(b.p[1], 1), przec(b.p[0], 1), przec(b.acc, 1), b.prz ? 'tak' : ''].map(csvPole).join(';'))];
+  pobierz('﻿' + w.join('\r\n') + '\r\n', 'budki-legowe-' + dzis() + '.csv', 'text/csv;charset=utf-8');
+}
+function csvParsuj(t){
+  const w = []; let r = [], p = '', q = false;
+  t = t.replace(/^﻿/, '');
+  for (let i = 0; i < t.length; i++){
+    const c = t[i];
+    if (q){ if (c === '"'){ if (t[i + 1] === '"'){ p += '"'; i++; } else q = false; } else p += c; }
+    else if (c === '"') q = true;
+    else if (c === ';'){ r.push(p); p = ''; }
+    else if (c === '\n' || c === '\r'){ if (c === '\r' && t[i + 1] === '\n') i++; r.push(p); w.push(r); r = []; p = ''; }
+    else p += c;
+  }
+  if (p || r.length){ r.push(p); w.push(r); }
+  return w.filter(x => x.some(v => v.trim()));
+}
+function budImport(){
+  const i = document.createElement('input'); i.type = 'file'; i.accept = '.csv,text/csv';
+  i.onchange = async () => {
+    try {
+      const w = csvParsuj(await i.files[0].text()), n = (w.shift() || []).map(v => v.trim()), ix = c => n.indexOf(c);
+      if (ix('id') < 0 || ix('X_1992_polnoc') < 0 || ix('Y_1992_wschod') < 0) throw new Error('kolumny');
+      const lb = v => parseFloat(String(v).replace(',', '.'));
+      let ile = 0;
+      await zmienBud(() => { for (const r of w){
+        const g = c => ix(c) < 0 ? '' : String(r[ix(c)] ?? '').trim();
+        const id = g('id'), x = lb(g('Y_1992_wschod')), y = lb(g('X_1992_polnoc')); if (!id || !isFinite(x) || !isFinite(y)) continue;
+        const f = wydzW(x, y);   // adres z położenia i bieżącej paczki; poza wydzieleniami zostaje adres z pliku
+        const b = {id, k:f ? f.k : g('adres_lesny') || null, p:[x, y], nr:g('nr'), typ:g('typ'), u:g('uwagi'), d:g('data_dodania') || dzis()};
+        const z = g('data_zmiany'), acc = lb(g('gps_dokladnosc_m')); if (z) b.z = z; if (isFinite(acc)) b.acc = acc; if (g('przesunieta_recznie') === 'tak') b.prz = true;
+        const s = BUD.find(o => o.id === id);
+        if (!s){ BUD.push(b); ile++; } else if ((b.z || b.d) > (s.z || s.d)){ Object.keys(s).forEach(k => delete s[k]); Object.assign(s, b); ile++; }
+      } });
+      rysujBud(); panelBud(`<p class='ok'>Wczytane albo zaktualizowane: ${ile}</p>`);
+    } catch (e) { alert('To nie jest plik CSV z budkami mapy (brak kolumn id, X_1992_polnoc, Y_1992_wschod).'); }
+  };
+  i.click();
+}
+
 // ---- start: ostatnia paczka z pamięci telefonu, a jak jej nie ma — ekran wyboru ----------------------
 (async () => {
   ekranStartowy();
-  try { NOT = await idbGet('notatki') || []; PKPOZ = await idbGet('pkPoz') || {}; } catch (e) { console.warn(e); }
+  try { NOT = await idbGet('notatki') || []; PKPOZ = await idbGet('pkPoz') || {}; BUD = await idbGet('budki') || []; } catch (e) { console.warn(e); }
   try { MOJE = await idbGet('moje') || []; WPLIKI = (await idbGet('warstwy') || []).map(przygotujWarstwe); } catch (e) { console.warn(e); }
   try {
     const z = await idbGet('zip');
