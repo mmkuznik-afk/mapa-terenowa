@@ -1172,6 +1172,7 @@ function podepnijMape(){
   const startDrag = (x, y) => { drag = {x, y, cx:V.cx, cy:V.cy, ruch:false}; };
   km.addEventListener('pointerdown', e => {
     e.preventDefault();
+    if (nd && nd.on) return;   // 22.11: w trakcie przeciągania drugi dotyk (kciuk, dłoń) jest pomijany — wcześniej przerywał chwyt i dalej jechała mapa
     km.setPointerCapture(e.pointerId); pts.set(e.pointerId, [e.clientX, e.clientY]);
     if (pts.size === 1){
       startDrag(e.clientX, e.clientY);
@@ -1181,7 +1182,7 @@ function podepnijMape(){
       // budka lęgowa: ten sam gest (22.11), sprawdzana na końcu — karteczki i kropki PK łapią się dokładnie jak przed budkami
       const bu = !k && !pk && !MI.on && trafBud(...swiat(e.clientX, e.clientY));
       const b = bu ? bu.id : null;
-      if (k || b || pk){ nd = {k, b, pk, x:e.clientX, y:e.clientY, on:false}; nd.t = setTimeout(() => { if (!nd) return; nd.on = true; drag = null; if (GPS.sledz){ GPS.sledz = false; odswiezGpsBtn(); }   /* 22.11: śledzenie GPS przesuwało mapę spod przeciąganej kropki */ if (nd.b) BUDD = nd.b; else if (nd.pk) PKD = nd.pk; else NOTD = nd.k; try { navigator.vibrate && navigator.vibrate(35); } catch (er) {} ndRusz(nd.x, nd.y); }, 450); }
+      if (k || b || pk){ nd = {k, b, pk, id:e.pointerId, x:e.clientX, y:e.clientY, on:false}; nd.t = setTimeout(() => { if (!nd) return; nd.on = true; drag = null; if (GPS.sledz){ GPS.sledz = false; odswiezGpsBtn(); }   /* 22.11: śledzenie GPS przesuwało mapę spod przeciąganej kropki */ if (nd.b) BUDD = nd.b; else if (nd.pk) PKD = nd.pk; else NOTD = nd.k; try { navigator.vibrate && navigator.vibrate(35); } catch (er) {} ndRusz(nd.x, nd.y); }, 450); }
     }
     else if (pts.size === 2){
       ndStop(true);
@@ -1191,6 +1192,7 @@ function podepnijMape(){
   });
   km.addEventListener('pointermove', e => {
     if (!pts.has(e.pointerId)) return;
+    if (nd && nd.on && e.pointerId !== nd.id) return;
     pts.set(e.pointerId, [e.clientX, e.clientY]);
     if (nd){
       if (nd.on){ ndRusz(e.clientX, e.clientY); return; }
@@ -1212,6 +1214,7 @@ function podepnijMape(){
     }
   });
   const koniec = e => {
+    if (nd && nd.on && e.pointerId !== nd.id){ pts.delete(e.pointerId); return; }   // drugi dotyk w trakcie przeciągania: bez skutku
     if (nd && nd.on){ const n = nd; ndStop(false); pts.delete(e.pointerId); drag = null;
       if (e.type === 'pointerup'){ if (n.b) budUpusc(); else if (n.pk) pkUpusc(); else notUpusc(n.k); } else { nd = n; ndCofnij(); nd = null; } return; }
     ndStop(false);
