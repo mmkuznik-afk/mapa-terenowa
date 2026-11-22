@@ -57,15 +57,6 @@ button,select,input,textarea{font:inherit;color:inherit}
 .bud-b{fill:#dba86b;stroke:#6b4218;stroke-width:1;stroke-linejoin:round}
 .bud-r{fill:#b0723a;stroke:#6b4218;stroke-width:1;stroke-linejoin:round}
 .bud-o{fill:#4a2c10}
-/* ptaszek wylatujący z budki (22.11): tylko ok. 1,6 s przy dodaniu i dotknięciu budki, bez stałej animacji (bateria) */
-#l-ptak{pointer-events:none}
-.ptak{animation:ptak-lot 1.6s cubic-bezier(.3,.6,.5,1) forwards}
-.ptak-s{animation:ptak-mach .13s ease-in-out infinite alternate}
-.ptak-c{fill:#3d2a1a;stroke:#fff;stroke-width:.8;paint-order:stroke;stroke-linejoin:round}
-.ptak-d{fill:#e0a23a}
-@keyframes ptak-lot{0%{transform:translate(0,2px) scale(.25);opacity:0}10%{opacity:1}35%{transform:translate(16px,-14px) scale(.9)}70%{transform:translate(38px,-28px) scale(1);opacity:1}100%{transform:translate(62px,-34px) scale(1);opacity:0}}
-@keyframes ptak-mach{from{transform:scaleY(1)}to{transform:scaleY(-.5)}}
-@media (prefers-reduced-motion:reduce){.ptak{display:none}}
 .buds{margin:10px 0 4px}
 .dal .w:not(.plan):not(.wyk){stroke-opacity:.4}.dal .droga{stroke-opacity:.45}.dal .ciek{stroke-opacity:.7}
 /* punkty graniczne (gr_pkt): kropka stałej wielkości na ekranie = odcinek zerowej długości z okrągłym końcem */
@@ -859,7 +850,7 @@ function budujUklad(){
     <defs><clipPath id='granica'>${G.les.map(f => `<path d='${f.d}'/>`).join('')}</clipPath></defs>
     <g id='l-pzS' clip-path='url(#granica)'></g><g id='l-wydz'></g><g id='l-pzO' clip-path='url(#granica)'></g><g id='l-szkP'></g><g id='l-cieki' clip-path='url(#granica)'></g><g id='l-drogi' clip-path='url(#granica)'></g><g id='l-pzD' clip-path='url(#granica)'></g>
     <g id='l-oddz'></g><g id='l-les'></g><g id='l-szkL'></g><g id='l-war'></g><g id='l-sel'></g><g id='l-szkD'></g><g id='l-pzI'></g><g id='l-gr'></g><g id='l-pk'></g><g id='l-moje'></g><g id='l-wyb'></g><g id='l-mier'></g>
-    <g id='l-labW' class='lab'></g><g id='l-grLab' class='lab lab-g'></g><g id='l-mojeLab' class='lab lab-m'></g><g id='l-labO' class='lab lab-o'></g><g id='l-not'></g><g id='l-bud'></g><g id='l-ptak'></g><g id='l-cel'></g><g id='l-gps'></g>
+    <g id='l-labW' class='lab'></g><g id='l-grLab' class='lab lab-g'></g><g id='l-mojeLab' class='lab lab-m'></g><g id='l-labO' class='lab lab-o'></g><g id='l-not'></g><g id='l-bud'></g><g id='l-cel'></g><g id='l-gps'></g>
   </svg></div>
   <div class='gora'>
     <div class='rok'><button onclick='rokKrok(-1)' aria-label='Poprzedni rok'>‹</button><select id='rok' onchange='ustawRok(+this.value)'>${M.lata.map(r => `<option value='${r}'${r === ST.rok ? ' selected' : ''}>${r}</option>`).join('')}</select><button onclick='rokKrok(1)' aria-label='Następny rok'>›</button></div>
@@ -2260,18 +2251,7 @@ async function budTutaj(){
   if (V.m >= BUD_ZOOM){ V.m = 2; V.cx = x; V.cy = y; ustawWidok(); }
   otworzBud(b.id);
 }
-function otworzBud(id){ KARTA = null; PUNKT = null; WYBM = null; OBW = null; OBR = null; podswietl(null); rysujSel(); BUDW = id; rysujBudKarte(); rysujBud(); budPtak(id); }
-// ptaszek wylatuje z otworu budki i znika (ok. 1,6 s); osobna warstwa, więc przerysowanie budek go nie urywa
-function budPtak(id){
-  const el = document.getElementById('l-ptak'), b = BUD.find(z => z.id === id); if (!el || !b || !ST.bud || V.m >= BUD_ZOOM) return;
-  el.style.setProperty('--vm', V.m.toFixed(3));
-  const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-  g.setAttribute('transform', `translate(${b.p[0].toFixed(1)} ${(-b.p[1]).toFixed(1)})`);
-  g.innerHTML = `<g class='lw'><g class='ptak'><path class='ptak-c' d='M-4 .3L-6.2 -.8L-5.6 1.4Z'/><ellipse class='ptak-c' cx='0' cy='.4' rx='3.6' ry='2.1'/><circle class='ptak-c' cx='3.2' cy='-1.1' r='1.6'/>` +
-    `<path class='ptak-d' d='M4.6 -1.4L6.4 -.9L4.6 -.5Z'/><g class='ptak-s'><path class='ptak-c' d='M-1.5 -.2Q-2.5 -6 3 -5.5Q1.2 -2.6 1.2 -.2Z'/></g></g></g>`;
-  el.appendChild(g);
-  setTimeout(() => g.remove(), 1800);
-}
+function otworzBud(id){ KARTA = null; PUNKT = null; WYBM = null; OBW = null; OBR = null; podswietl(null); rysujSel(); BUDW = id; rysujBudKarte(); rysujBud(); }
 function rysujBudKarte(kom){
   const b = BUD.find(z => z.id === BUDW); if (!b){ zamknijArk(); return; }
   const op = BUD_TYPY.map(t => `<option value='${esc(t)}'${b.typ === t ? ' selected' : ''}>${esc(t)}</option>`).join('') +
