@@ -54,9 +54,9 @@ button,select,input,textarea{font:inherit;color:inherit}
 /* budki lęgowe (22.11): mała brązowa budka z białą obwódką, stały rozmiar na ekranie */
 #l-bud{pointer-events:none}
 .bud-c{fill:none;stroke:#fff;stroke-width:3.2;stroke-linejoin:round}
-.bud-b{fill:#a0682f;stroke:#3b2207;stroke-width:1;stroke-linejoin:round}
-.bud-r{fill:#5c3511;stroke:#3b2207;stroke-width:1;stroke-linejoin:round}
-.bud-o{fill:#241303}
+.bud-b{fill:#dba86b;stroke:#6b4218;stroke-width:1;stroke-linejoin:round}
+.bud-r{fill:#b0723a;stroke:#6b4218;stroke-width:1;stroke-linejoin:round}
+.bud-o{fill:#4a2c10}
 .buds{margin:10px 0 4px}
 .dal .w:not(.plan):not(.wyk){stroke-opacity:.4}.dal .droga{stroke-opacity:.45}.dal .ciek{stroke-opacity:.7}
 /* punkty graniczne (gr_pkt): kropka stałej wielkości na ekranie = odcinek zerowej długości z okrągłym końcem */
@@ -1065,7 +1065,7 @@ function panelInfo(kom){
       return `<label class='przel'><input type='checkbox' ${ST.pz.has(p.id) ? 'checked' : ''} ${n ? '' : 'disabled'} onchange="pzPrzel('${p.id}',this.checked)"> ${p.nazwa} <span class='op'>${n ? n + ' ' + obiektow(n) : 'brak w paczce'}</span></label>`; }).join('')}
     <p class='nota'>Siedliska, ochrona przyrody i drogi z Leśnej Mapy Numerycznej w paczce. Dotknięcie mapy pokazuje, co leży w tym miejscu.</p>
     <div class='wrs'><span class='kw' style='background:#ffe45c'></span><span class='nz'>Notatki na wydzieleniach <span class='op'>${NOT.length}</span></span><button class='btn' style='font-size:14px;color:inherit' onclick='panelNot()'>Lista ›</button></div>
-    <div class='wrs'><input type='checkbox' ${ST.bud ? 'checked' : ''} onchange='ST.bud=this.checked;zapiszUst();rysujBud()' aria-label='Pokaż budki lęgowe'><span class='kw' style='background:#a0682f'></span><span class='nz'>Budki lęgowe <span class='op'>${BUD.length}</span></span><button class='btn' style='font-size:14px;color:inherit' onclick='panelBud()'>Lista ›</button></div>
+    <div class='wrs'><input type='checkbox' ${ST.bud ? 'checked' : ''} onchange='ST.bud=this.checked;zapiszUst();rysujBud()' aria-label='Pokaż budki lęgowe'><span class='kw' style='background:#dba86b'></span><span class='nz'>Budki lęgowe <span class='op'>${BUD.length}</span></span><button class='btn' style='font-size:14px;color:inherit' onclick='panelBud()'>Lista ›</button></div>
     <div class='wrs'><input type='checkbox' ${ST.moje ? 'checked' : ''} onchange='ST.moje=this.checked;zapiszUst();rysujMoje()' aria-label='Pokaż moje obiekty'><span class='kw' style='background:#a6ff00'></span><span class='nz'>Moje punkty i pomiary <span class='op'>${MOJE.length}</span></span><button class='btn' style='font-size:14px;color:inherit' onclick='panelMoje()'>Lista ›</button></div>
     ${WPLIKI.map(w => `<div class='wrs'><input type='checkbox' ${w.wid ? 'checked' : ''} onchange="wPrzel('${w.id}',this.checked)" aria-label='Pokaż warstwę'><span class='kw' style='background:${w.kol}' onclick="wKolor('${w.id}')" title='Zmień kolor'></span><span class='nz'>${esc(w.nazwa)} <span class='op'>${w.f.length}</span></span><button onclick="wPokaz('${w.id}')" aria-label='Pokaż na mapie'>◎</button><button onclick="wUsun('${w.id}')" aria-label='Usuń warstwę'>🗑</button></div>`).join('')}
     <div style='margin-top:12px'><button class='btn' onclick='dodajWarstwe()'>＋ Dodaj warstwę z pliku</button></div>
